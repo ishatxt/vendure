@@ -10,6 +10,10 @@ offline, installs as a PWA, and exports animated loops and print-ready stills.
 
 `vanilla JS` · `zero dependencies` · `no build step` · `offline-first`
 
+
+
+![Vendure demo](assets/vendure.gif)
+
 </div>
 
 ---
