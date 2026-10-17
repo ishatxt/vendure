@@ -61,7 +61,7 @@ function Garden() {
   this.cache = {};
   this.Sd = 0; this.St = 0; this.wrapped = false;
   this.palette = 0;
-  this.opts = { boil: true, recoil: 20, density: 1 };
+  this.opts = { boil: true, recoil: 20, density: 1, curvy: 1, size: 1, roses: 1 };
   this.rand = Math.random;
   this.mx = null; this.my = null;
   this.flies = []; this.perch = []; this.fa = {};
@@ -219,6 +219,7 @@ Garden.prototype.buildPosterUI = function () {
     self.buildPoster();
     self.changed();
   });
+  this.bindSliders();
   this.buildShareUI();
   this.buildExportUI();
   var modes = document.getElementById('modes');
@@ -316,7 +317,7 @@ Garden.prototype.serialize = function () {
     seed: this.seed,
     mode: this.mode,
     aspect: this.aspect,
-    opts: { boil: !!this.opts.boil, recoil: this.opts.recoil, density: this.opts.density }
+    opts: { boil: !!this.opts.boil, recoil: this.opts.recoil, density: this.opts.density, curvy: this.opts.curvy, size: this.opts.size, roses: this.opts.roses }
   };
 };
 Garden.prototype.applyState = function (s) {
@@ -330,8 +331,12 @@ Garden.prototype.applyState = function (s) {
     if (typeof s.opts.boil === 'boolean') this.opts.boil = s.opts.boil;
     if (s.opts.recoil != null) this.opts.recoil = s.opts.recoil;
     if (s.opts.density != null) this.opts.density = s.opts.density;
+    if (s.opts.curvy != null) this.opts.curvy = s.opts.curvy;
+    if (s.opts.size != null) this.opts.size = s.opts.size;
+    if (s.opts.roses != null) this.opts.roses = s.opts.roses;
   }
   if (s.mode) this._wantMode = s.mode;
+  this.syncSliders();
 };
 Garden.prototype.setAspect = function (a) {
   var dims = ASPECTS[a] || ASPECTS['1:1'];
@@ -1101,6 +1106,59 @@ Garden.prototype.bloomAt = function (cx, cy) {
   l.x = cx; l.y = cy; l.tx = cx; l.ty = cy;
   this.flowers.push(l);
 };
+/* Re-generate every live letter and flower with the current opts, restarting
+   their growth animation. In Poster mode, rebuild the poster instead. */
+Garden.prototype.regrow = function () {
+  if (this.mode === 'poster') { this.buildPoster(); return; }
+  var now = performance.now(), i, l;
+  for (i = 0; i < this.letters.length; i++) {
+    l = this.letters[i];
+    if (l.ch === ' ' || l.dead) continue;
+    l.els = null; l.endEls = null; l.tend = null;
+    l.birth = now; l.tb = now; l.cut = null;
+    this.gen(l);
+  }
+  for (i = 0; i < this.flowers.length; i++) {
+    l = this.flowers[i];
+    l.els = null; l.endEls = null; l.tend = null;
+    l.birth = now; l.tb = now;
+    this.gen(l);
+  }
+};
+/* Generative range sliders in the Poster panel. Each writes into this.opts
+   (persisted + shared) and re-grows the garden so changes are visible live. */
+Garden.prototype.bindSliders = function () {
+  var self = this;
+  var map = [
+    { id: 'sdensity', key: 'density', fmt: function (v) { return v.toFixed(2); } },
+    { id: 'scurvy', key: 'curvy', fmt: function (v) { return v.toFixed(2); } },
+    { id: 'ssize', key: 'size', fmt: function (v) { return v.toFixed(2); } },
+    { id: 'sroses', key: 'roses', fmt: function (v) { return v.toFixed(2); } }
+  ];
+  this._sliders = map;
+  map.forEach(function (m) {
+    var el = document.getElementById(m.id), out = document.getElementById(m.id + 'v');
+    if (!el) return;
+    el.value = self.opts[m.key];
+    if (out) out.textContent = m.fmt(self.opts[m.key]);
+    el.addEventListener('input', function () {
+      var v = parseFloat(el.value);
+      self.opts[m.key] = v;
+      if (out) out.textContent = m.fmt(v);
+      self.regrow();
+      self.changed();
+    });
+  });
+};
+Garden.prototype.syncSliders = function () {
+  if (!this._sliders) return;
+  for (var i = 0; i < this._sliders.length; i++) {
+    var m = this._sliders[i];
+    var el = document.getElementById(m.id), out = document.getElementById(m.id + 'v');
+    if (el) el.value = this.opts[m.key];
+    if (out) out.textContent = m.fmt(this.opts[m.key]);
+  }
+};
 
 /* ---------------- math ---------------- */
 /* h, spr, eo, eb, rng, bez, at are imported from ./src/math.js and
@@ -1274,14 +1332,14 @@ Garden.prototype.layerAt = function (segs, u) {
 };
 Garden.prototype.wordParams = function (ws) {
   var r = this.rng(ws * 7 + 13);
-  var dens = this.opts.density;
+  var dens = this.opts.density, curvy = this.opts.curvy, size = this.opts.size, roses = this.opts.roses;
   return {
-    roseP: 0.3 + r() * 0.3,
+    roseP: Math.min(0.85, (0.3 + r() * 0.3) * roses),
     leafy: (0.6 + r() * 0.8) * dens,
     dens: dens,
     lean: (r() - 0.5) * 0.6,
-    big: 0.85 + r() * 0.45,
-    curvy: 0.8 + r() * 0.6,
+    big: (0.85 + r() * 0.45) * size,
+    curvy: (0.8 + r() * 0.6) * curvy,
     bridgeP: Math.min(0.95, (0.45 + r() * 0.35) * dens),
     w: 0.5
   };

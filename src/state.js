@@ -21,9 +21,13 @@ export function defaultState() {
     seed: 7,
     mode: 'type',
     aspect: '1:1',
-    opts: { boil: true, recoil: 20, density: 1 }
+    opts: { boil: true, recoil: 20, density: 1, curvy: 1, size: 1, roses: 1 }
   };
 }
+
+/* round to 2 decimals for compact URL params */
+function r2(v) { return Math.round((Number(v) || 0) * 100) / 100; }
+function n2(v) { var n = parseFloat(v); return isNaN(n) ? null : n; }
 
 /* Compact, human-readable permalink fragment: #p=0&k=breathe&w=in%20bloom&s=7&m=type&a=1:1 */
 export function stateToHash(s) {
@@ -34,6 +38,10 @@ export function stateToHash(s) {
   if (s.seed != null) q.set('s', String(s.seed));
   if (s.mode) q.set('m', s.mode);
   if (s.aspect) q.set('a', s.aspect);
+  var o = s.opts;
+  if (o && (o.density !== 1 || o.curvy !== 1 || o.size !== 1 || o.roses !== 1 || o.recoil !== 20 || o.boil !== true)) {
+    q.set('o', [r2(o.density), r2(o.curvy), r2(o.size), r2(o.roses), r2(o.recoil), o.boil ? 1 : 0].join(','));
+  }
   return q.toString();
 }
 
@@ -50,6 +58,18 @@ export function hashToState(hash) {
   if (q.has('s')) s.seed = parseInt(q.get('s'), 10) || 0;
   if (q.has('m')) s.mode = q.get('m');
   if (q.has('a')) s.aspect = q.get('a');
+  if (q.has('o')) {
+    var p = q.get('o').split(',');
+    var opts = {};
+    var dens = n2(p[0]), curvy = n2(p[1]), size = n2(p[2]), roses = n2(p[3]), recoil = n2(p[4]);
+    if (dens != null) opts.density = dens;
+    if (curvy != null) opts.curvy = curvy;
+    if (size != null) opts.size = size;
+    if (roses != null) opts.roses = roses;
+    if (recoil != null) opts.recoil = recoil;
+    if (p[5] != null) opts.boil = p[5] === '1';
+    s.opts = opts;
+  }
   s.v = STATE_VERSION;
   return s;
 }

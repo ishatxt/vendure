@@ -9,12 +9,12 @@ split the pure helpers into ES modules, made the poster size aspect-aware,
 added persistence/sharing, and added tap gestures. The goal was to land
 **Phases 0–2 of a 7-phase roadmap**.
 
-Roadmap (only 0–2 done):
+Roadmap (0–3 done):
 
 - Phase 0 — module split, `ZW/ZH` poster-dimension refactor, state schema
 - Phase 1 — persistence & sharing
 - Phase 2 — tap gestures (single tap = butterfly, double tap = blooms a flower)
-- Phase 3 — generative parameter ranges *(not started)*
+- Phase 3 — generative parameter ranges *(completed this session)*
 - Phase 4 — export / Lottie *(not started)*
 - Phase 5 — interaction / editing *(not started)*
 - Phase 6 — audio export (separate WAV) *(not started)*
@@ -98,6 +98,37 @@ draw time, so assigning `l.x/l.y` after `gen()` correctly places the bloom. In
 Type mode `st.face` is on, so bloomed roses turn toward the pointer and can be
 used as butterfly perches.
 
+## Phase 3 — generative parameter ranges (completed this session)
+
+Four knobs now control how the garden grows. They live in `this.opts` alongside
+the existing `boil`/`recoil`, are persisted, shareable, and drive generation:
+
+| Param | Range | What it scales |
+| --- | --- | --- |
+| `density` | 0.5–2.0 | stem/leaf/bridge frequency (`leafy`, `dens`, `bridgeP`) |
+| `curvy` | 0.5–2.0 | vine curvature and waviness (`p.curvy`) |
+| `size` | 0.6–1.6 | rose/bloom scale (`p.big`) |
+| `roses` | 0.0–2.0 | rose-vs-other tip probability (`p.roseP`, capped at 0.85) |
+
+Changes:
+
+- `this.opts` default gains `curvy:1, size:1, roses:1`.
+- `wordParams()` reads all four and multiplies into the per-word params, so the
+  same seed now yields a different garden when a knob moves.
+- Poster panel has a new **Garden** group with four range sliders
+  (`#sdensity/#scurvy/#ssize/#sroses` + value readouts), wired by
+  `bindSliders()`; `syncSliders()` refreshes them in `applyState`.
+- `Garden.prototype.regrow()` re-runs `gen()` on every live letter and flower
+  (restarting growth) in Type mode, or `buildPoster()` in Poster mode.
+- `serialize()`/`applyState()` carry the new fields; `src/state.js`
+  `defaultState()` matches.
+- Permalink gains a compact `o=density,curvy,size,roses,recoil,boil` param,
+  written only when non-default (keeps stock URLs short). Round-trip verified.
+- CSS: `.pslider` row (label · range · tabular-num readout).
+
+Verified: `node --check` OK; `npm test` 26/0; smoke 23/0; restore 4/0; mirror in
+sync; permalink opts round-trip + "no `o=` when default" both pass.
+
 ## Share fixes (follow-up)
 
 The share plumbing existed but a **Type-mode** link did not reproduce the
@@ -170,6 +201,6 @@ butterfly (appears after 250 ms); double-tap to bloom a flower.
 
 ## Next steps
 
-- Phase 3 — generative parameter ranges.
+- Phase 3 — generative parameter ranges — **done**.
 - Optionally add the jsdom smoke test into `test/` (jsdom as a devDependency) so
   the DOM/integration coverage runs under `npm test`.
