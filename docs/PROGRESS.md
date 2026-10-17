@@ -2,6 +2,19 @@
 
 Status: **Phases 0–3, 5, 7 complete and verified.**
 
+> **Restructure note (2026-10-17):** the inline `<style>` and module script
+> were extracted from `index.html` into `src/style.css` and `src/app.js`;
+> `src/_app.mjs` (the old headless mirror of the inline script) was deleted,
+> the demo gif moved to `assets/`, and this log moved to `docs/`. The tables
+> and notes below still describe the layout as it was at the time.
+>
+> **Module-split note (2026-10-17, later):** `src/app.js` (2085 lines) was
+> further split into mixins that attach to `Garden.prototype` —
+> `garden.js` (constructor), `ui.js`, `garden-state.js`, `poster.js`,
+> `export.js`, `input.js`, `draw.js`, `layout.js`, `growth.js`,
+> `butterflies.js`, `frame.js`, `constants.js` — with `src/app.js` as the
+> 21-line entry point. Content is byte-identical to the original sections.
+
 ## Overview
 
 Vendure is a single-file, vanilla-JS canvas app (`index.html`). This work

@@ -1,17 +1,28 @@
 /* Vendure service worker — offline app shell + runtime font cache */
-const VERSION = 'vendure-v1';
+const VERSION = 'vendure-v5';
 const SHELL = [
   './',
   './index.html',
   './manifest.json',
+  './src/style.css',
+  './src/app.js',
+  './src/constants.js',
+  './src/garden.js',
+  './src/ui.js',
+  './src/garden-state.js',
+  './src/poster.js',
+  './src/export.js',
+  './src/input.js',
+  './src/draw.js',
+  './src/layout.js',
+  './src/growth.js',
+  './src/butterflies.js',
+  './src/frame.js',
   './src/palettes.js',
   './src/math.js',
   './src/encoders.js',
   './src/state.js',
-  './icon-192.png',
-  './icon-512.png',
-  './icon-maskable-512.png',
-  './apple-touch-icon.png'
+  './assets/icon.png'
 ];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
