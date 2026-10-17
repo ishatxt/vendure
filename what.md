@@ -148,6 +148,7 @@ drives deterministic geometry in Poster mode).
   - `typeText()` replays characters onto the canvas
   - `shareLink()` builds a permalink containing the typed words
   - `setStatus()` surfaces the toast in Type mode
+  - `loadJSON()` replays a Type-mode project's words
   - aspect toggle cycles; non-square (`4:5`) poster builds; `posterSVG` viewBox is correct
   - `stillBlob`, `makePDF`, `exportGIF`, `exportAPNG` (small) all produce blobs
 - End-to-end restore test (fresh jsdom + cache-busted import) → **4 passed, 0 failed**:
