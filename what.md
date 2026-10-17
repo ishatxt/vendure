@@ -1,22 +1,22 @@
-# What was done — Type Garden
+# What was done — Vendure
 
-Status: **Phases 0–2 complete and verified.**
+Status: **Phases 0–3 complete and verified.**
 
 ## Overview
 
-Type Garden is a single-file, vanilla-JS canvas app (`index.html`). This work
+Vendure is a single-file, vanilla-JS canvas app (`index.html`). This work
 split the pure helpers into ES modules, made the poster size aspect-aware,
 added persistence/sharing, and added tap gestures. The goal was to land
 **Phases 0–2 of a 7-phase roadmap**.
 
-Roadmap (0–3 done):
+Roadmap (0–3, 5 done):
 
 - Phase 0 — module split, `ZW/ZH` poster-dimension refactor, state schema
 - Phase 1 — persistence & sharing
 - Phase 2 — tap gestures (single tap = butterfly, double tap = blooms a flower)
 - Phase 3 — generative parameter ranges *(completed this session)*
 - Phase 4 — export / Lottie *(not started)*
-- Phase 5 — interaction / editing *(not started)*
+- Phase 5 — interaction / editing *(completed this session)*
 - Phase 6 — audio export (separate WAV) *(not started)*
 - Phase 7 — perf / a11y / PWA *(not started)*
 
@@ -55,7 +55,8 @@ Roadmap (0–3 done):
 ## Phase 1 — persistence & sharing
 
 - Permalink format: `#p=<palette>&k=<preset>&w=<words>&s=<seed>&m=<mode>&a=<aspect>`.
-- `localStorage` key `typegarden.v1`; schema
+- `localStorage` key `typegarden.v1` (kept from the original name for
+  backward-compat — existing saved gardens survive the rename); schema
   `{v:1, palette, preset, ptext, seed, mode, aspect, opts}`.
 - Boot: constructor applies `defaultState()` then `hashToState(location.hash) || loadSaved()`
   before `buildUI()`, then `syncUI()` after `buildPoster()`; restores Poster mode
@@ -129,6 +130,41 @@ Changes:
 Verified: `node --check` OK; `npm test` 26/0; smoke 23/0; restore 4/0; mirror in
 sync; permalink opts round-trip + "no `o=` when default" both pass.
 
+## Phase 5 — interaction / editing (completed this session)
+
+An **Edit** button (`#modes`) turns Type mode into a lightweight editor. Edit is
+a sub-mode of Type: same canvas, but typing and tap gestures are suspended.
+
+- `this.emode` flag + `this.sel` (selected letter) + `this.drag` (active drag).
+- `setMode('edit')` enters edit; `syncEmode()` mirrors state to the button,
+  `#edithint` ("drag to move · del removes"), and the canvas cursor
+  (`#app.emode` → `grab` / `.dragging` → `grabbing`).
+- **Pick** — `pick(wx, wy)` hit-tests each live letter's draw box
+  (`x ± tw/2`, `y ∈ [-0.78S, +0.22S]`), scanning back-to-front so the topmost
+  letter wins. `toWorld()` maps screen→canvas via `getBoundingClientRect`.
+- **Drag** — `editTap` arms `this.drag` with the grab offset; `editMove` stores
+  the move as `l.ox/l.oy` (offset from the layout target) and updates `l.tx/ty`
+  so the frame lerp follows. `editUp` clears it.
+- **Offset survival** — `layout()` re-applies `l.ox/oy` after `layoutCore`, so
+  moved letters stay put across retype/regrow/resize/spacer changes.
+- **Delete** — `editDelete()` withers `this.sel`, clears the selection, and
+  resyncs the hidden input (`inp.value = SENT; iv = SENT`) so `liveText()` and
+  subsequent keystrokes remain correct. `Delete`/`Backspace` route here while
+  editing; `Escape` deselects.
+- **Highlight** — `drawSel()` draws a dashed box + anchor dot via new portable
+  `backend` primitives `dashRect` (built from short stroke segments) and `dot`
+  (16-gon), so canvas and SVG backends both work. `savePNG` temporarily clears
+  `this.sel` so exports never include the selection box.
+- **Persistence** — `serialize()` adds `offs` (`[index, ox, oy]` triples over
+  live letters); `applyState()` stores them and boot/`loadJSON` call
+  `applyOffsets()` after replay. Permalink gains a compact
+  `d=i:ox:oy,...` param, written only when non-empty.
+
+Verified: `npm test` 29/0 (offsets round-trip + "no `d=` when empty"); smoke
+23/0; restore 4/0; a dedicated `edit.mjs` jsdom suite 20/0 (enter edit, pick,
+drag, offset-survives-layout, serialize, delete + input resync, exit). Mirror
+in sync; `node --check` clean.
+
 ## Share fixes (follow-up)
 
 The share plumbing existed but a **Type-mode** link did not reproduce the
@@ -197,10 +233,14 @@ npm run serve     # serves on http://localhost:8080 (required; ES modules)
 ```
 
 Open `http://localhost:8080` and type to grow a garden. Tap once for a
-butterfly (appears after 250 ms); double-tap to bloom a flower.
+butterfly (appears after 250 ms); double-tap to bloom a flower. Click **Edit**
+to drag letters around or delete them.
 
 ## Next steps
 
 - Phase 3 — generative parameter ranges — **done**.
+- Phase 5 — interaction / editing — **done**.
+- Remaining: Phase 4 (Lottie export), Phase 6 (audio/WAV export), Phase 7
+  (perf / a11y / PWA).
 - Optionally add the jsdom smoke test into `test/` (jsdom as a devDependency) so
   the DOM/integration coverage runs under `npm test`.

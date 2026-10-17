@@ -1,9 +1,9 @@
 {
-  "name": "type-garden",
+  "name": "vendure",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Type Garden — grow a garden from your words.",
+  "description": "Vendure — grow a garden from your words.",
   "scripts": {
     "test": "node test/run.js",
     "serve": "python3 -m http.server 8080"

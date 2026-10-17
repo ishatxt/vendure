@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Type Garden</title>
+<title>Vendure</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
@@ -18,6 +18,8 @@ a:hover { color: #FFB4A8; }
   -webkit-user-select: none; user-select: none;
 }
 #app button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; font-family: inherit; cursor: pointer; }
+#app.emode, #app.emode #cv { cursor: grab; }
+#app.emode.dragging, #app.emode.dragging #cv { cursor: grabbing; }
 html[data-touch] #app { touch-action: none; }
 #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #peers { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
@@ -229,6 +231,7 @@ html[data-touch] #app { touch-action: none; }
 
   <div id="modes">
     <button class="mode active" data-mode="type">Type</button>
+    <button class="mode" data-mode="edit">Edit</button>
     <button class="mode" data-mode="poster">Poster</button>
   </div>
 
@@ -343,6 +346,7 @@ html[data-touch] #app { touch-action: none; }
       <span>space cuts</span>
       <span class="fine">backspace withers</span><span class="coarse">&#9003; withers</span>
       <span class="fine">enter clears</span><span class="coarse">return clears</span>
+      <span id="edithint" hidden>drag to move &middot; del removes</span>
     </div>
     <div id="ctrls">
       <div id="pal"></div>
@@ -419,6 +423,7 @@ function Garden() {
   this.opts = { boil: true, recoil: 20, density: 1, curvy: 1, size: 1, roses: 1 };
   this.rand = Math.random;
   this.mx = null; this.my = null;
+  this.emode = false; this.sel = null; this.drag = null;
   this.flies = []; this.perch = []; this.fa = {};
   this._now = 0;
   this.composing = false;
@@ -443,6 +448,7 @@ function Garden() {
   this._light = [this.ZW / 2, this.ZH / 2];
   this._tap = null;
   this._wantMode = null;
+  this._offs = null;
   this._hashApplied = true;
   this.vmime = (typeof MediaRecorder !== 'undefined')
     ? ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].filter(function (m) { return MediaRecorder.isTypeSupported(m); })[0] || null
@@ -463,6 +469,7 @@ function Garden() {
   /* replay a shared/autosaved garden's words into the live canvas (Type mode) */
   if (this._wantMode !== 'poster' && bootState && typeof bootState.ptext === 'string' && bootState.ptext) {
     this.typeText(bootState.ptext);
+    this.applyOffsets(this._offs);
   }
 
   var self = this;
@@ -672,7 +679,8 @@ Garden.prototype.serialize = function () {
     seed: this.seed,
     mode: this.mode,
     aspect: this.aspect,
-    opts: { boil: !!this.opts.boil, recoil: this.opts.recoil, density: this.opts.density, curvy: this.opts.curvy, size: this.opts.size, roses: this.opts.roses }
+    opts: { boil: !!this.opts.boil, recoil: this.opts.recoil, density: this.opts.density, curvy: this.opts.curvy, size: this.opts.size, roses: this.opts.roses },
+    offs: this.offsets()
   };
 };
 Garden.prototype.applyState = function (s) {
@@ -691,6 +699,7 @@ Garden.prototype.applyState = function (s) {
     if (s.opts.roses != null) this.opts.roses = s.opts.roses;
   }
   if (s.mode) this._wantMode = s.mode;
+  this._offs = (s.offs && s.offs.length) ? s.offs : null;
   this.syncSliders();
 };
 Garden.prototype.setAspect = function (a) {
@@ -727,7 +736,7 @@ Garden.prototype.shareLink = function () {
   var self = this;
   var url = absURL(stateToHash(this.serialize()));
   this.setStatus('Sharing\u2026');
-  shareOrCopy(url, 'Type Garden', this.ptext).then(function (r) {
+  shareOrCopy(url, 'Vendure', this.ptext).then(function (r) {
     if (r === 'copied') self.setStatus('Link copied to clipboard');
     else if (r === 'shared') self.setStatus('Shared');
     else if (r === 'cancelled') self.setStatus('');
@@ -770,6 +779,7 @@ Garden.prototype.loadJSON = function (file) {
       } else {
         if (self.mode !== 'type') self.setMode('type');
         if (typeof s.ptext === 'string' && s.ptext) self.typeText(s.ptext);
+        self.applyOffsets(self._offs);
       }
       self.changed();
       self.setStatus('Loaded project');
@@ -801,6 +811,27 @@ Garden.prototype.syncUI = function () {
 /* ---------------- poster mode ---------------- */
 Garden.prototype.liveText = function () {
   return (this.letters || []).filter(function (l) { return !l.dead; }).map(function (l) { return l.ch; }).join('').trim();
+};
+/* manual move offsets, as [index-among-live-letters, ox, oy] triples. Index
+   keeps them text-aligned so they can be dropped if the text changes. */
+Garden.prototype.offsets = function () {
+  var out = [], A = this.letters;
+  for (var i = 0; i < A.length; i++) {
+    var l = A[i];
+    if (l.dead || l.ox == null) continue;
+    out.push([i, Math.round(l.ox * 100) / 100, Math.round(l.oy * 100) / 100]);
+  }
+  return out;
+};
+Garden.prototype.applyOffsets = function (offs) {
+  if (!offs || !offs.length) return;
+  for (var k = 0; k < offs.length; k++) {
+    var o = offs[k], l = this.letters[o[0]];
+    if (!l || l.dead) continue;
+    l.ox = o[1]; l.oy = o[2];
+    if (l.tx != null) { l.tx += l.ox; l.ty += l.oy; }
+    if (l.x != null) { l.x = l.tx; l.y = l.ty; }
+  }
 };
 Garden.prototype.pr = function () {
   for (var i = 0; i < PRESETS.length; i++) if (PRESETS[i].id === this.preset) return PRESETS[i];
@@ -836,8 +867,17 @@ Garden.prototype.setBusy = function (b) {
   Array.prototype.forEach.call(document.querySelectorAll('#pexpsettings select'), function (s) { s.disabled = b; });
 };
 Garden.prototype.setMode = function (mode) {
-  if (mode === this.mode) return;
+  if (mode !== 'edit' && mode === this.mode && !this.emode) return;
   var self = this;
+  /* Edit is a sub-mode of Type: same canvas, gestures/typing suspended. */
+  if (mode === 'edit') {
+    if (this.emode) return;
+    if (this.mode !== 'type') this.setMode('type');
+    this.emode = true;
+    this.syncEmode();
+    this.changed();
+    return;
+  }
   var exm = document.getElementById('pexp'); if (exm) exm.hidden = true;
   if (mode === 'poster') {
     var t = this.liveText();
@@ -846,6 +886,7 @@ Garden.prototype.setMode = function (mode) {
       var w = document.getElementById('pwords'); if (w) w.value = this.ptext;
     }
     this.mode = 'poster';
+    this.emode = false;
     this.posterEl.hidden = false;
     this.cv.style.display = 'none';
     document.getElementById('peers').style.display = 'none';
@@ -855,6 +896,8 @@ Garden.prototype.setMode = function (mode) {
     this.buildPoster();
   } else {
     this.mode = 'type';
+    this.emode = false;
+    this.sel = null; this.drag = null;
     this.posterEl.hidden = true;
     this.cv.style.display = 'block';
     document.getElementById('peers').style.display = '';
@@ -862,11 +905,27 @@ Garden.prototype.setMode = function (mode) {
     this.resize();
     this.refocus();
   }
+  this.syncEmode();
   Array.prototype.forEach.call(document.querySelectorAll('#modes .mode'), function (b) {
     b.classList.toggle('active', b.getAttribute('data-mode') === mode);
   });
   this.applyPalette();
   this.changed();
+};
+/* mirror edit-state onto the UI: button highlight, hint line, canvas cursor */
+Garden.prototype.syncEmode = function () {
+  var on = this.emode;
+  this.app.classList.toggle('emode', on);
+  var hint = document.getElementById('edithint');
+  if (hint) hint.hidden = !on;
+  Array.prototype.forEach.call(document.querySelectorAll('#modes .mode'), function (b) {
+    var dm = b.getAttribute('data-mode');
+    if (dm === 'type') b.classList.toggle('active', !on);
+    if (dm === 'edit') b.classList.toggle('active', on);
+  });
+  var hintFine = document.getElementById('hints');
+  if (hintFine) hintFine.classList.toggle('editing', on);
+  if (!on) { this.sel = null; this.drag = null; this.app.classList.remove('dragging'); }
 };
 Garden.prototype.buildPoster = function () {
   var self = this, pr = this.pr(), text = (this.ptext || '').slice(0, 40) || ' ';
@@ -1102,7 +1161,7 @@ Garden.prototype.stillBlob = function (scale, t, type, q) {
 Garden.prototype.makePDF = function (jpeg, w, h) {
   var enc = new TextEncoder();
   function cat(list) { return gConcat(list); }
-  var header = enc.encode('%PDF-1.4\n%TYPE-GARDEN\n');
+  var header = enc.encode('%PDF-1.4\n%VENDURE\n');
   var objs = {};
   objs[1] = enc.encode('<< /Type /Catalog /Pages 2 0 R >>');
   objs[2] = enc.encode('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
@@ -1426,17 +1485,20 @@ Garden.prototype.bind = function () {
   window.addEventListener('pointermove', function (e) {
     self.mx = e.clientX; self.my = e.clientY;
     self.ptype = e.pointerType || self.ptype;
+    if (self.drag) self.editMove(e.clientX, e.clientY);
   });
   window.addEventListener('pointerup', function (e) {
+    if (self.drag) self.editUp();
     if (e.pointerType && e.pointerType !== 'mouse') { self.mx = null; self.my = null; }
   });
-  window.addEventListener('pointercancel', function () { self.mx = null; self.my = null; });
+  window.addEventListener('pointercancel', function () { if (self.drag) self.editUp(); self.mx = null; self.my = null; });
   document.addEventListener('pointerleave', function () { self.mx = null; self.my = null; });
 };
 
 /* gestures: a single tap/click spawns a butterfly after a short delay, so a
    second tap within 300ms can cancel it and bloom a new flower instead. */
 Garden.prototype.onTap = function (x, y) {
+  if (this.emode) { this.editTap(x, y); return; }
   var now = performance.now(), self = this, t = this._tap;
   if (t && (now - t.t) < 300 && Math.hypot(x - t.x, y - t.y) < 32) {
     if (t.timer) clearTimeout(t.timer);
@@ -1461,8 +1523,58 @@ Garden.prototype.bloomAt = function (cx, cy) {
   l.x = cx; l.y = cy; l.tx = cx; l.ty = cy;
   this.flowers.push(l);
 };
-/* Re-generate every live letter and flower with the current opts, restarting
-   their growth animation. In Poster mode, rebuild the poster instead. */
+/* ---------------- edit mode ----------------
+   Pick a letter by its draw box, drag it (offset from its layout target), and
+   delete it. Offsets live in l.ox/l.oy and are re-applied by layout(), so a
+   moved letter stays moved across retype/regrow/resize. */
+Garden.prototype.toWorld = function (x, y) {
+  var r = this.cv.getBoundingClientRect();
+  return [x - r.left, y - r.top];
+};
+Garden.prototype.pick = function (wx, wy) {
+  var A = this.letters, S = this.Sd;
+  for (var i = A.length - 1; i >= 0; i--) {
+    var l = A[i];
+    if (l.dead || l.ch === ' ' || l.tx == null) continue;
+    var hw = (l.tw || S * 0.5) / 2;
+    if (wx >= l.x - hw && wx <= l.x + hw && wy >= l.y - 0.78 * S && wy <= l.y + 0.22 * S) return l;
+  }
+  return null;
+};
+Garden.prototype.editTap = function (x, y) {
+  var w = this.toWorld(x, y), l = this.pick(w[0], w[1]);
+  this.sel = l;
+  if (l) {
+    this.drag = { l: l, dx: w[0] - l.x, dy: w[1] - l.y };
+    this.app.classList.add('dragging');
+    try { this.cv.setPointerCapture && this.cv.setPointerCapture(1); } catch (e) {}
+  }
+};
+Garden.prototype.editMove = function (x, y) {
+  if (!this.drag) return;
+  var w = this.toWorld(x, y), l = this.drag.l;
+  var nx = w[0] - this.drag.dx, ny = w[1] - this.drag.dy;
+  if (l.tx == null) { l.tx = l.x; l.ty = l.y; }
+  l.ox = (l.ox || 0) + (nx - l.tx);
+  l.oy = (l.oy || 0) + (ny - l.ty);
+  l.tx = nx; l.ty = ny;
+};
+Garden.prototype.editUp = function () {
+  if (!this.drag) return;
+  this.drag = null;
+  this.app.classList.remove('dragging');
+  this.changed();
+};
+Garden.prototype.editDelete = function () {
+  var l = this.sel;
+  if (!l || l.dead) { this.sel = null; return; }
+  l.dead = performance.now();
+  this.sel = null;
+  /* keep the hidden input in sync so liveText()/next keystrokes stay correct */
+  this.inp.value = SENT; this.iv = SENT;
+  this.layout();
+  this.changed();
+};
 Garden.prototype.regrow = function () {
   if (this.mode === 'poster') { this.buildPoster(); return; }
   var now = performance.now(), i, l;
@@ -1545,6 +1657,25 @@ Garden.prototype.backend = function (g) {
     fill: function (p, col) { g.beginPath(); self.path(g, p, true); g.fillStyle = col; g.fill(); },
     stroke: function (p, col, w) { g.beginPath(); self.path(g, p, false); g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke(); },
     rect: function (x, y, w, h, col) { g.fillStyle = col; g.fillRect(x, y, w, h); },
+    /* dashed outline built from short stroke segments (portable across the
+       canvas + SVG-shim backends, neither of which needs setLineDash) */
+    dashRect: function (x, y, w, h, col) {
+      var seg = Math.max(4, (w + h) / 24), i;
+      function edge(x0, y0, x1, y1) {
+        var dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy), n = Math.max(1, Math.round(L / (seg * 2)));
+        for (i = 0; i < n; i++) {
+          var a = i / n, b = (i + 0.5) / n;
+          self.stroke([[x0 + dx * a, y0 + dy * a], [x0 + dx * b, y0 + dy * b]], col, 1.5);
+        }
+      }
+      edge(x, y, x + w, y); edge(x + w, y, x + w, y + h);
+      edge(x + w, y + h, x, y + h); edge(x, y + h, x, y);
+    },
+    dot: function (x, y, r, col) {
+      var P = [];
+      for (var a = 0; a < 16; a++) { var t = a / 16 * Math.PI * 2; P.push([x + Math.cos(t) * r, y + Math.sin(t) * r]); }
+      self.fill(P, col);
+    },
     text: function (ch, x, y, S, col) { g.font = '700 ' + S + 'px ' + self.F; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = col; g.fillText(ch, x, y); }
   };
 };
@@ -1625,7 +1756,10 @@ Garden.prototype.layout = function (snap) {
   var A = this.letters.filter(function (l) { return !l.dead; });
   var res = this.layoutCore(A, this.W, this.H, this.wrapped);
   this.wrapped = res.wrapped;
-  A.forEach(function (l) { if (l.x == null) { l.x = l.tx; l.y = l.ty; } });
+  A.forEach(function (l) {
+    if (l.ox != null) { l.tx += l.ox; l.ty += l.oy; }
+    if (l.x == null) { l.x = l.tx; l.y = l.ty; }
+  });
   var S = res.S, last = A[A.length - 1];
   this.St = S;
   this.ctx_ = last ? last.tx + last.tw / 2 + 0.07 * S : this.W / 2;
@@ -2141,7 +2275,12 @@ Garden.prototype.key = function (e) {
   var now = performance.now(), self = this;
   this._kd = true;
   setTimeout(function () { self._kd = false; }, 0);
-  if (e.key === 'Backspace') { e.preventDefault(); this.wither(now); return; }
+  if (e.key === 'Backspace') { e.preventDefault(); if (this.emode) this.editDelete(); else this.wither(now); return; }
+  if (e.key === 'Delete') { if (this.emode) { e.preventDefault(); this.editDelete(); } return; }
+  if (this.emode) {
+    if (e.key === 'Escape') { this.sel = null; this.changed(); }
+    return; /* no typing while editing */
+  }
   if (e.key === 'Enter') { e.preventDefault(); this.letters = []; this.flowers = []; this.layout(); return; }
   if (e.key === ' ') { e.preventDefault(); this.add(' ', now); return; }
   if (e.key && e.key.length === 1) { e.preventDefault(); this.add(e.key, now); return; }
@@ -2220,6 +2359,17 @@ Garden.prototype.paint = function (now) {
   var B = this.backend(g), st = this.mainState();
   this.render(B, now, st);
   this.drawFlies(B, now, st.C);
+  if (this.emode && this.sel && !this.sel.dead) this.drawSel(B, st);
+};
+/* dashed selection box around the picked letter (Type/Edit mode only) */
+Garden.prototype.drawSel = function (B, st) {
+  var l = this.sel, S = st.S;
+  if (l.tx == null || l.ch === ' ') return;
+  var hw = (l.tw || S * 0.5) / 2 + S * 0.06;
+  var x0 = l.x - hw, y0 = l.y - 0.84 * S, w = hw * 2, h = S * 1.1;
+  B.dashRect(x0, y0, w, h, st.C.blue || '#FFFFFF');
+  /* small handle dot at the letter's anchor */
+  B.dot(l.x, l.y, S * 0.035, st.C.blue || '#FFFFFF');
 };
 Garden.prototype.frame = function () {
   var now = performance.now();
@@ -2252,9 +2402,10 @@ Garden.prototype.dl = function (blob, name) {
   setTimeout(function () { URL.revokeObjectURL(a.href); if (a.parentNode) a.parentNode.removeChild(a); }, 100);
 };
 Garden.prototype.savePNG = function () {
-  var self = this;
+  var self = this, sel = this.sel;
+  this.sel = null; /* never bake the edit selection box into an export */
   this.paint(performance.now());
-  this.cv.toBlob(function (b) { if (b) self.dl(b, 'garden.png'); self.refocus(); });
+  this.cv.toBlob(function (b) { if (b) self.dl(b, 'garden.png'); self.sel = sel; self.refocus(); });
 };
 Garden.prototype.saveSVG = function () {
   var sc = this.svgCtx();

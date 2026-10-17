@@ -127,5 +127,15 @@ eq('aspect table square', ASPECTS['1:1'], [1080, 1080]);
 ok('empty hash -> null', hashToState('') === null);
 ok('PAL has 13 palettes', PAL.length === 13);
 
+console.log('edit-mode offsets');
+eq('offsets round-trip hash',
+  hashToState('#' + stateToHash({ ptext: 'hi', offs: [[0, 12.5, -8], [1, 0, 3]] })).offs,
+  [[0, 12.5, -8], [1, 0, 3]]);
+ok('empty offsets -> no d= param',
+  stateToHash({ ptext: 'hi', offs: [] }).indexOf('d=') === -1);
+ok('offsets param present when non-empty',
+  stateToHash({ ptext: 'hi', offs: [[2, 5, 5]] }).indexOf('d=2%3A5%3A5') !== -1 ||
+  stateToHash({ ptext: 'hi', offs: [[2, 5, 5]] }).indexOf('d=2:5:5') !== -1);
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

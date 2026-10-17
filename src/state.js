@@ -42,6 +42,9 @@ export function stateToHash(s) {
   if (o && (o.density !== 1 || o.curvy !== 1 || o.size !== 1 || o.roses !== 1 || o.recoil !== 20 || o.boil !== true)) {
     q.set('o', [r2(o.density), r2(o.curvy), r2(o.size), r2(o.roses), r2(o.recoil), o.boil ? 1 : 0].join(','));
   }
+  if (s.offs && s.offs.length) {
+    q.set('d', s.offs.map(function (t) { return t[0] + ':' + r2(t[1]) + ':' + r2(t[2]); }).join(','));
+  }
   return q.toString();
 }
 
@@ -69,6 +72,12 @@ export function hashToState(hash) {
     if (recoil != null) opts.recoil = recoil;
     if (p[5] != null) opts.boil = p[5] === '1';
     s.opts = opts;
+  }
+  if (q.has('d')) {
+    s.offs = q.get('d').split(',').map(function (triple) {
+      var t = triple.split(':');
+      return [parseInt(t[0], 10) || 0, n2(t[1]) || 0, n2(t[2]) || 0];
+    });
   }
   s.v = STATE_VERSION;
   return s;
