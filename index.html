@@ -180,7 +180,9 @@ html[data-touch] #app { touch-action: none; }
 #pexp .fmt .fsub { color: #8C8C8C; font-size: 11px; }
 #pexp .fmt:disabled { opacity: 0.4; cursor: not-allowed; }
 #pexp .fmt:disabled .fsub { color: #C0392B; }
-#pexp .settings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+#pexp .settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#pexp .settings .field { min-width: 0; }
+#pexp .prow { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; color: #8C8C8C; font-size: 11px; }
 #pexp .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 #pexp .field label { color: #8C8C8C; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; }
 #pexp select {
@@ -219,7 +221,7 @@ html[data-touch] #app { touch-action: none; }
     <div id="panel">
       <div style="display:flex;flex-direction:column;gap:4px">
         <div class="ptitle">Poster</div>
-        <div class="psub" id="pinfo">1:1 &middot; 3s loop &middot; 30 fps</div>
+        <div class="psub prow" id="pinfo">1:1 &middot; 3s loop &middot; 30 fps</div>
       </div>
       <div class="pgroup">
         <div class="plabel">Words</div>
@@ -237,11 +239,20 @@ html[data-touch] #app { touch-action: none; }
       <div class="pgroup">
         <div class="plabel">Export</div>
         <button id="pexport" class="pill solid">Export&hellip;</button>
+        <div class="pgrid2" style="margin-top:8px">
+          <button id="pshare" class="pill">Share link</button>
+          <button id="paspect" class="pill">1:1</button>
+          <button id="pcopypng" class="pill">Copy PNG</button>
+          <button id="pcopysvg" class="pill">Copy SVG</button>
+          <button id="psavejson" class="pill">Save .json</button>
+          <button id="ploadjson" class="pill">Load .json</button>
+        </div>
         <div class="psub" id="pinfo2">1080 &times; 1080 &middot; video, GIF, PNG, SVG, PDF</div>
         <div id="pstatus"></div>
+        <input type="file" id="pljson" accept="application/json,.json" hidden>
       </div>
     </div>
-    <div id="stage"><canvas id="pcv" width="1080" height="1080"></canvas></div>
+    <div id="stage"><canvas id="pcv" width="1080" height="1080" style="aspect-ratio: 1 / 1"></canvas></div>
 
     <div id="pexp" hidden>
       <div class="backdrop" id="pexpbackdrop"></div>
@@ -249,7 +260,7 @@ html[data-touch] #app { touch-action: none; }
         <div class="sheethead">
           <div style="display:flex;flex-direction:column;gap:4px">
             <div class="ptitle">Export</div>
-            <div class="psub" id="pexpinfo"></div>
+            <div class="psub prow" id="pexpinfo"></div>
           </div>
           <button id="pexpclose" class="pill ghost" style="align-self:auto">Close</button>
         </div>
@@ -283,6 +294,15 @@ html[data-touch] #app { touch-action: none; }
               <option value="prores">ProRes / Max</option>
             </select>
           </div>
+          <div class="field">
+            <label for="pexpaspect">Aspect</label>
+            <select id="pexpaspect">
+              <option value="1:1">1:1 &middot; Square</option>
+              <option value="4:5">4:5 &middot; Portrait</option>
+              <option value="16:9">16:9 &middot; Landscape</option>
+              <option value="9:16">9:16 &middot; Story</option>
+            </select>
+          </div>
         </div>
         <div class="prog" id="pexpprog" hidden>
           <div class="progbar"><i id="pexpbar"></i></div>
@@ -297,40 +317,47 @@ html[data-touch] #app { touch-action: none; }
   <div id="bar">
     <div id="hints">
       <span class="fine">type to grow</span><span class="coarse">tap to type</span>
+      <span class="coarse">tap = butterfly &middot; double-tap blooms</span>
       <span>space cuts</span>
       <span class="fine">backspace withers</span><span class="coarse">&#9003; withers</span>
       <span class="fine">enter clears</span><span class="coarse">return clears</span>
     </div>
     <div id="ctrls">
       <div id="pal"></div>
+      <button class="btn" id="shareGarden">Share</button>
       <button class="btn" id="savePNG">PNG</button>
       <button class="btn" id="saveSVG">SVG</button>
     </div>
   </div>
 </div>
 
-<script>
+<script type="module">
 "use strict";
+
+import { PAL } from './src/palettes.js';
+import { h, spr, eo, eb, rng, bez, at } from './src/math.js';
+import {
+  gU16, gU32, bU16, bU32, gBytes, gConcat, crcBytes,
+  pngChunk, deflateBytes, quantizeColors, buildPaletteLUT,
+  gifLZW, gifSubBlocks, nextTick
+} from './src/encoders.js';
+import {
+  STATE_VERSION, ASPECTS, defaultState, stateToHash, hashToState,
+  loadSaved, saveSaved, absURL, shareOrCopy, copyText, copyBlob
+} from './src/state.js';
 
 var FONT = '"Playfair Display", Georgia, serif';
 var SENT = String.fromCharCode(0x200b);
 
-/* name, background, flower, stem & leaf, flower line, type */
-var PAL = [
-  ['Rose noir', '#000000', '#FF1400', '#3257FF', '#FFB4A8', '#FFFFFF'],
-  ['Paper',     '#F3EEE4', '#FF3B1F', '#1C2B8F', '#FFD2C4', '#111111'],
-  ['Midnight',  '#0D1B4C', '#FF5A4E', '#9FB4FF', '#FFD6CF', '#FFFFFF'],
-  ['Citrus',    '#0E1A12', '#FF8A00', '#1FA463', '#FFE2B8', '#FFF6E8'],
-  ['Orchid',    '#140A1F', '#E63CFF', '#2FB8A6', '#F9D1FF', '#FFFFFF'],
-  ['Moss',      '#133A2A', '#FFB7C5', '#7FD18B', '#FFFFFF', '#F6F1E7'],
-  ['Tomato',    '#FF1400', '#FFF1E0', '#0B0B0B', '#FF1400', '#000000'],
-  ['Butter',    '#FFE9A8', '#E4002B', '#0F5132', '#FFC2C2', '#1A1A1A'],
-  ['Blush',     '#FAD4D8', '#C8102E', '#274690', '#FFE3E6', '#1A1A1A'],
-  ['Mono',      '#000000', '#F2F2F2', '#6E6E6E', '#000000', '#FFFFFF'],
-  ['Terracotta', '#2B1A12', '#F2683C', '#7FB069', '#FFD9B0', '#FFF3E6'],
-  ['Cyanotype', '#0A2540', '#45d6bb', '#4AA3C7', '#BFE3F0', '#FFFFFF'],
-  ['Lilac dusk', '#1B1230', '#FF7BB0', '#8E7CFF', '#FFD9F0', '#F6F0FF']
-];
+/* pure helpers are imported and attached to the prototype so existing
+   `this.h(...)` style calls keep working. */
+Garden.prototype.h = h;
+Garden.prototype.spr = spr;
+Garden.prototype.eo = eo;
+Garden.prototype.eb = eb;
+Garden.prototype.rng = rng;
+Garden.prototype.bez = bez;
+Garden.prototype.at = at;
 
 /* motion profile: snappy growth-in, calm idle sway, livelier butterflies */
 var MOTION = {
@@ -362,6 +389,7 @@ function Garden() {
   this.g = this.cv.getContext('2d');
 
   this.letters = [];
+  this.flowers = [];
   this.uid = 1;
   this.cache = {};
   this.Sd = 0; this.St = 0; this.wrapped = false;
@@ -388,12 +416,22 @@ function Garden() {
   this.busy = false;
   this.status = '';
   this._crcT = null;
-  this._light = [540, 540];
+  this.aspect = '1:1';
+  this.ZW = 1080; this.ZH = 1080;
+  this._light = [this.ZW / 2, this.ZH / 2];
+  this._tap = null;
+  this._wantMode = null;
+  this._hashApplied = true;
   this.vmime = (typeof MediaRecorder !== 'undefined')
     ? ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].filter(function (m) { return MediaRecorder.isTypeSupported(m); })[0] || null
     : null;
 
   if (this.touch) document.documentElement.setAttribute('data-touch', '');
+
+  /* restore state from permalink first, then from local autosave */
+  this.applyState(defaultState());
+  var bootState = hashToState(location.hash) || loadSaved();
+  if (bootState) this.applyState(bootState);
 
   this.buildUI();
   this.bind();
@@ -409,6 +447,8 @@ function Garden() {
   }
 
   this.buildPoster();
+  this.syncUI();
+  if (this._wantMode === 'poster') this.setMode('poster');
   this.lt = performance.now();
   (function loop() { self.raf = requestAnimationFrame(loop); self.frame(); })();
 
@@ -421,11 +461,11 @@ Garden.prototype.buildUI = function () {
   pal.innerHTML = '';
   PAL.forEach(function (p, i) {
     var btn = document.createElement('button');
-    btn.className = 'sw' + (i === 0 ? ' active' : '');
+    btn.className = 'sw' + (i === self.palette ? ' active' : '');
     btn.setAttribute('aria-label', p[0]);
     btn.setAttribute('title', p[0]);
     btn.style.background = p[1];
-    btn.style.borderColor = i === 0 ? '#fff' : 'transparent';
+    btn.style.borderColor = i === self.palette ? '#fff' : 'transparent';
     var dot = document.createElement('span');
     dot.className = 'dot';
     dot.style.background = p[2];
@@ -439,6 +479,8 @@ Garden.prototype.buildUI = function () {
   });
   document.getElementById('savePNG').addEventListener('click', function (e) { e.stopPropagation(); self.savePNG(); });
   document.getElementById('saveSVG').addEventListener('click', function (e) { e.stopPropagation(); self.saveSVG(); });
+  var shg = document.getElementById('shareGarden');
+  if (shg) shg.addEventListener('click', function (e) { e.stopPropagation(); self.shareLink(); });
   this.buildPosterUI();
   this.applyPalette();
 };
@@ -454,6 +496,7 @@ Garden.prototype.setPalette = function (i) {
     b.classList.toggle('active', k === i);
   });
   this.applyPalette();
+  this.changed();
   this.refocus();
 };
 Garden.prototype.buildPosterUI = function () {
@@ -473,6 +516,7 @@ Garden.prototype.buildPosterUI = function () {
         o.classList.toggle('active', o.getAttribute('data-preset') === p.id);
       });
       self.buildPoster();
+      self.changed();
     });
     motion.appendChild(b);
   });
@@ -497,11 +541,14 @@ Garden.prototype.buildPosterUI = function () {
   words.addEventListener('input', function () {
     self.ptext = words.value.slice(0, 40);
     self.buildPoster();
+    self.changed();
   });
   document.getElementById('pregrow').addEventListener('click', function () {
     self.seed = Math.floor(Math.random() * 1e6);
     self.buildPoster();
+    self.changed();
   });
+  this.buildShareUI();
   this.buildExportUI();
   var modes = document.getElementById('modes');
   Array.prototype.forEach.call(modes.querySelectorAll('.mode'), function (b) {
@@ -534,8 +581,7 @@ Garden.prototype.buildExportUI = function () {
     Array.prototype.forEach.call(tabBtns, function (t) {
       t.classList.toggle('active', t.getAttribute('data-tab') === tab);
     });
-    var info = document.getElementById('pexpinfo');
-    if (info) info.textContent = self.P ? ('1:1 \u00b7 ' + (self.P.T / 1000) + 's loop \u00b7 ' + self.pr().label) : '';
+    document.getElementById('pexpinfo').textContent = self.aspect + ' \u00b7 ' + (self.P ? (self.P.T / 1000) + 's loop \u00b7 ' + self.pr().label : '');
   }
   Array.prototype.forEach.call(tabBtns, function (t) {
     t.addEventListener('click', function () { tab = t.getAttribute('data-tab'); self.expTab = tab; render(); });
@@ -554,6 +600,28 @@ Garden.prototype.buildExportUI = function () {
   document.getElementById('pexpclose').addEventListener('click', function () { if (!self.busy) modal.hidden = true; });
   document.getElementById('pexpbackdrop').addEventListener('click', function () { if (!self.busy) modal.hidden = true; });
 };
+Garden.prototype.buildShareUI = function () {
+  var self = this;
+  function on(id, fn) { var el = document.getElementById(id); if (el) el.addEventListener('click', function (e) { e.stopPropagation(); fn(); }); }
+  on('pshare', function () { self.shareLink(); });
+  on('paspect', function () { self.toggleAspect(); });
+  on('pcopypng', function () { self.copyPNG(); });
+  on('pcopysvg', function () { self.copyPosterSVG(); });
+  on('psavejson', function () { self.saveJSON(); });
+  var file = document.getElementById('pljson');
+  on('ploadjson', function () { if (file) file.click(); });
+  if (file) file.addEventListener('change', function () {
+    self.loadJSON(file.files && file.files[0]);
+    file.value = '';
+  });
+  var aspectSel = document.getElementById('pexpaspect');
+  if (aspectSel) aspectSel.addEventListener('change', function () {
+    self.setAspect(aspectSel.value);
+    if (self.mode === 'poster') self.buildPoster();
+    self.changed();
+    self.setStatus('Poster ' + self.aspect + ' \u00b7 ' + self.ZW + ' \u00d7 ' + self.ZH);
+  });
+};
 Garden.prototype.applyPalette = function () {
   var p = this.pal();
   this.app.style.background = p.bg;
@@ -565,6 +633,132 @@ Garden.prototype.refocus = function () {
 Garden.prototype.pal = function () {
   var p = PAL[this.palette] || PAL[0];
   return { bg: p[1], C: { red: p[2], blue: p[3], line: p[4], text: p[5], vein: p[1] } };
+};
+
+/* ---------------- state & sharing ---------------- */
+Garden.prototype.serialize = function () {
+  return {
+    v: STATE_VERSION,
+    palette: this.palette,
+    preset: this.preset,
+    ptext: this.ptext,
+    seed: this.seed,
+    mode: this.mode,
+    aspect: this.aspect,
+    opts: { boil: !!this.opts.boil, recoil: this.opts.recoil, density: this.opts.density }
+  };
+};
+Garden.prototype.applyState = function (s) {
+  if (!s) return;
+  if (s.palette != null) this.palette = s.palette;
+  if (s.preset) this.preset = s.preset;
+  if (typeof s.ptext === 'string') this.ptext = s.ptext.slice(0, 40);
+  if (s.seed != null) this.seed = s.seed;
+  if (s.aspect && ASPECTS[s.aspect]) this.setAspect(s.aspect);
+  if (s.opts) {
+    if (typeof s.opts.boil === 'boolean') this.opts.boil = s.opts.boil;
+    if (s.opts.recoil != null) this.opts.recoil = s.opts.recoil;
+    if (s.opts.density != null) this.opts.density = s.opts.density;
+  }
+  if (s.mode) this._wantMode = s.mode;
+};
+Garden.prototype.setAspect = function (a) {
+  var dims = ASPECTS[a] || ASPECTS['1:1'];
+  this.aspect = a;
+  this.ZW = dims[0]; this.ZH = dims[1];
+  this._light = [this.ZW / 2, this.ZH / 2];
+  if (this.pcv) {
+    this.pcv.width = this.ZW; this.pcv.height = this.ZH;
+    this.pcv.style.aspectRatio = this.ZW + ' / ' + this.ZH;
+  }
+  var ab = document.getElementById('paspect');
+  if (ab && ab.textContent !== a) ab.textContent = a;
+  var sel = document.getElementById('pexpaspect');
+  if (sel && sel.value !== a) sel.value = a;
+};
+Garden.prototype.changed = function () {
+  this.persist();
+  this.updateHash();
+};
+Garden.prototype.persist = function () {
+  if (this._saveTimer) clearTimeout(this._saveTimer);
+  var self = this;
+  this._saveTimer = setTimeout(function () { saveSaved(self.serialize()); }, 250);
+};
+Garden.prototype.updateHash = function () {
+  try {
+    var h = '#' + stateToHash(this.serialize());
+    if (location.hash !== h) history.replaceState(null, '', h);
+    this._hashApplied = true;
+  } catch (e) {}
+};
+Garden.prototype.shareLink = function () {
+  var self = this;
+  var url = absURL(stateToHash(this.serialize()));
+  this.setStatus('Sharing\u2026');
+  shareOrCopy(url, 'Type Garden', this.ptext).then(function (r) {
+    if (r === 'copied') self.setStatus('Link copied to clipboard');
+    else if (r === 'shared') self.setStatus('Shared');
+    else if (r === 'cancelled') self.setStatus('');
+    else self.setStatus('Copy failed \u2014 ' + url);
+  });
+};
+Garden.prototype.copyText = function (t, label) {
+  var self = this;
+  copyText(t).then(function (ok) { self.setStatus(ok ? (label || 'Copied') : 'Copy failed'); });
+};
+Garden.prototype.copyPNG = function () {
+  var self = this, s = this.expSettings();
+  this.stillBlob(s.scale, this.P ? this.P.T * 0.4 : 0, 'image/png').then(function (b) {
+    if (!b) { self.setStatus('Could not render image'); return; }
+    copyBlob(b, 'image/png').then(function (ok) { self.setStatus(ok ? 'PNG copied' : 'Copy unsupported \u2014 use Export'); });
+  });
+};
+Garden.prototype.copyPosterSVG = function () {
+  var svg = this.posterSVG(this.P ? this.P.T * 0.4 : 0, 1);
+  this.copyText(svg, 'SVG copied');
+};
+Garden.prototype.saveJSON = function () {
+  var blob = new Blob([JSON.stringify(this.serialize(), null, 2)], { type: 'application/json' });
+  this.dl(blob, this.fname() + '.json');
+  this.setStatus('Saved project .json');
+};
+Garden.prototype.loadJSON = function (file) {
+  var self = this;
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function () {
+    try {
+      var s = JSON.parse(String(reader.result));
+      self.applyState(s);
+      self.syncUI();
+      self.buildPoster();
+      if (self._wantMode === 'poster') self.setMode('poster');
+      self.changed();
+      self.setStatus('Loaded project');
+    } catch (e) { self.setStatus('Invalid project file'); }
+  };
+  reader.readAsText(file);
+};
+Garden.prototype.toggleAspect = function () {
+  var keys = Object.keys(ASPECTS), i = keys.indexOf(this.aspect);
+  var next = keys[(i + 1 + keys.length) % keys.length];
+  this.setAspect(next);
+  if (this.mode === 'poster') this.buildPoster();
+  this.changed();
+  this.setStatus('Poster ' + this.aspect + ' \u00b7 ' + this.ZW + ' \u00d7 ' + this.ZH);
+};
+Garden.prototype.syncUI = function () {
+  var self = this;
+  var w = document.getElementById('pwords'); if (w) w.value = this.ptext;
+  var pal = document.getElementById('pal');
+  if (pal) Array.prototype.forEach.call(pal.querySelectorAll('.sw'), function (b, k) {
+    b.classList.toggle('active', k === self.palette); b.style.borderColor = k === self.palette ? '#fff' : 'transparent';
+  });
+  var pp = document.getElementById('ppal');
+  if (pp) Array.prototype.forEach.call(pp.querySelectorAll('.pp'), function (b, k) { b.classList.toggle('active', k === self.palette); });
+  var motion = document.getElementById('pmotion');
+  if (motion) Array.prototype.forEach.call(motion.querySelectorAll('.opt'), function (o) { o.classList.toggle('active', o.getAttribute('data-preset') === self.preset); });
 };
 
 /* ---------------- poster mode ---------------- */
@@ -604,6 +798,7 @@ Garden.prototype.setMode = function (mode) {
     document.getElementById('peers').style.display = 'none';
     this.bar.style.display = 'none';
     try { this.inp.blur(); } catch (e) {}
+    this.setAspect(this.aspect);
     this.buildPoster();
   } else {
     this.mode = 'type';
@@ -618,6 +813,7 @@ Garden.prototype.setMode = function (mode) {
     b.classList.toggle('active', b.getAttribute('data-mode') === mode);
   });
   this.applyPalette();
+  this.changed();
 };
 Garden.prototype.buildPoster = function () {
   var self = this, pr = this.pr(), text = (this.ptext || '').slice(0, 40) || ' ';
@@ -649,7 +845,8 @@ Garden.prototype.buildPoster = function () {
     }
   });
   this.rand = Math.random;
-  var res = this.layoutCore(L, 1080, 1080, false);
+  var W = this.ZW, H = this.ZH;
+  var res = this.layoutCore(L, W, H, false);
   var S = res.S, x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   function addP(l, x, y, r) {
     var X = l.tx + x * S, Y = l.ty + y * S, R = (r || 0) * S;
@@ -673,23 +870,25 @@ Garden.prototype.buildPoster = function () {
     if (l.ty - 0.72 * S < ty0) ty0 = l.ty - 0.72 * S;
     if (l.ty > ty1) ty1 = l.ty;
   });
-  var Z = 1080, half = Z * 0.44, bcx = (tx0 + tx1) / 2, bcy = (ty0 + ty1) / 2;
-  var k = Math.min(1.25, half / Math.max(1, bcx - x0), half / Math.max(1, bcy - y0), half / Math.max(1, x1 - bcx), half / Math.max(1, y1 - bcy));
+  var ZW = this.ZW, ZH = this.ZH, halfX = ZW * 0.44, halfY = ZH * 0.44, bcx = (tx0 + tx1) / 2, bcy = (ty0 + ty1) / 2;
+  var k = Math.min(1.25, halfX / Math.max(1, bcx - x0), halfY / Math.max(1, bcy - y0), halfX / Math.max(1, x1 - bcx), halfY / Math.max(1, y1 - bcy));
   L.forEach(function (l) {
-    l.tx = Z / 2 + (l.tx - bcx) * k; l.ty = Z / 2 + (l.ty - bcy) * k;
+    l.tx = ZW / 2 + (l.tx - bcx) * k; l.ty = ZH / 2 + (l.ty - bcy) * k;
     l.tw *= k; l.x = l.tx; l.y = l.ty;
   });
   this.P = { letters: L, S: S * k, T: pr.T, preset: pr.id };
   this.pt0 = performance.now();
   var pinfo = document.getElementById('pinfo');
-  if (pinfo) pinfo.textContent = '1:1 \u00b7 ' + (pr.T / 1000) + 's loop \u00b7 30 fps';
+  if (pinfo) pinfo.textContent = this.aspect + ' \u00b7 ' + (pr.T / 1000) + 's loop \u00b7 30 fps';
+  var pinfo2 = document.getElementById('pinfo2');
+  if (pinfo2) pinfo2.textContent = this.ZW + ' \u00d7 ' + this.ZH + ' \u00b7 video, GIF, PNG, SVG, PDF';
 };
-Garden.prototype.drawBg = function (g, Z) { g.fillStyle = this.pal().bg; g.fillRect(0, 0, Z, Z); };
+Garden.prototype.drawBg = function (g, W, H) { g.fillStyle = this.pal().bg; g.fillRect(0, 0, W || this.ZW, H || this.ZH); };
 Garden.prototype.posterFly = function (B, tt, P, C) {
   var ps = this.perch.slice().sort(function (a, b) { return a.x - b.x; });
   if (!ps.length) return;
   var p1 = ps[Math.floor(ps.length * 0.25)], p2 = ps[Math.min(ps.length - 1, Math.floor(ps.length * 0.75))];
-  var A = [-80, 300], s1 = [p1.x, p1.y - p1.R * 0.55], s2 = [p2.x, p2.y - p2.R * 0.55], E = [1160, 260];
+  var A = [-80, this.ZH * 0.28], s1 = [p1.x, p1.y - p1.R * 0.55], s2 = [p2.x, p2.y - p2.R * 0.55], E = [this.ZW + 80, this.ZH * 0.24];
   var sz = Math.max(12, P.S * 0.09), t = tt / 1000, self = this;
   var eo = function (v) { return self.eo(Math.max(0, Math.min(1, v))); };
   var leg = function (a, b, u, lift) { var e = eo(u); return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e - Math.sin(e * Math.PI) * lift]; };
@@ -706,9 +905,9 @@ Garden.prototype.posterFly = function (B, tt, P, C) {
 };
 Garden.prototype.posterDraw = function (g, t, scale) {
   var P = this.P; if (!P) return;
-  var Z = 1080, sc = scale || 1;
+  var ZW = this.ZW, ZH = this.ZH, sc = scale || 1;
   g.setTransform(sc, 0, 0, sc, 0, 0);
-  this.drawBg(g, Z);
+  this.drawBg(g, ZW, ZH);
   var T = P.T, tt = ((t % T) + T) % T, L = P.letters;
   var B = this.backend(g);
   var st = { letters: L, S: P.S, C: this.pal().C, boil: this.opts.boil, recoil: this.opts.recoil, speed: 1, wither: 600, textAll: true };
@@ -730,21 +929,21 @@ Garden.prototype.posterDraw = function (g, t, scale) {
   } else if (P.preset === 'wind') {
     set(-1e5);
     var SW = P.S, u = tt / P.T, front = -0.35 + u * 1.9;
-    st.warp = (function (S) {
+    st.warp = (function (S, W) {
       return function (x, y, l) {
-        var hh = Math.max(0, (l.y - y) / S), d = l.x / 1080 - front;
+        var hh = Math.max(0, (l.y - y) / S), d = l.x / W - front;
         var gg = d < 0 ? Math.exp(d * 2.2) * Math.cos(-d * 9) : Math.exp(-d * d * 30);
         var idle = Math.sin(tt / 1000 * 1.6 + l.x * 0.01) * 0.012;
         return [x + (gg * 0.13 + idle) * S * hh * hh * 0.6 + (gg * 0.13 + idle) * S * hh * 0.4, y + Math.abs(gg) * 0.02 * S * hh];
       };
-    })(SW);
+    })(SW, this.ZW);
     st.rotw = function (e) {
-      var d = e.x / 1080 - front;
+      var d = e.x / self.ZW - front;
       return (d < 0 ? Math.exp(d * 2.2) * Math.cos(-d * 9) : Math.exp(-d * d * 30)) * 0.35;
     };
   } else if (P.preset === 'reach') {
     set(-1e5);
-    var SR = P.S, phr = tt / P.T * Math.PI * 2, lx = 540 + Math.sin(phr) * 430, ly = 540 + Math.sin(phr * 2) * 260;
+    var SR = P.S, phr = tt / P.T * Math.PI * 2, lx = ZW / 2 + Math.sin(phr) * ZW * 0.398, ly = ZH / 2 + Math.sin(phr * 2) * ZH * 0.24;
     this._light = [lx, ly];
     st.warp = function (x, y, l) {
       var dx = lx - l.x, dy = ly - (l.y - SR * 0.6), d = Math.hypot(dx, dy) || 1, w = Math.max(0, 1 - d / 560), s = w * w * (3 - 2 * w);
@@ -773,8 +972,8 @@ Garden.prototype.posterDraw = function (g, t, scale) {
   if (P.preset === 'typed') {
     var born = st.letters, last = born[born.length - 1], S2 = P.S;
     if (Math.floor(tt / 400) % 2 === 0 || (last && tt - last.birth < 300)) {
-      var x = last ? last.tx + last.tw / 2 + 0.07 * S2 : 540;
-      var y = last ? last.ty - 0.33 * S2 : 540;
+      var x = last ? last.tx + last.tw / 2 + 0.07 * S2 : ZW / 2;
+      var y = last ? last.ty - 0.33 * S2 : ZH / 2;
       var w = Math.max(2, S2 * 0.03), h = 0.8 * S2;
       B.rect(x - w / 2, y - h / 2, w, h, st.C.text);
     }
@@ -782,142 +981,7 @@ Garden.prototype.posterDraw = function (g, t, scale) {
 };
 
 /* ---------------- export helpers ---------------- */
-var _CRCT = null;
-function gU16(n) { return [n & 255, (n >> 8) & 255]; }
-function gU32(n) { return [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >> 24) & 255]; }
-function bU16(n) { return [(n >> 8) & 255, n & 255]; }
-function bU32(n) { return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]; }
-function gBytes(arr) { var a = new Uint8Array(arr.length); for (var i = 0; i < arr.length; i++) a[i] = arr[i] & 255; return a; }
-function gConcat(parts) {
-  var n = 0, i;
-  for (i = 0; i < parts.length; i++) n += parts[i].length;
-  var out = new Uint8Array(n), o = 0;
-  for (i = 0; i < parts.length; i++) { out.set(parts[i], o); o += parts[i].length; }
-  return out;
-}
-function crcTable() {
-  if (_CRCT) return _CRCT;
-  var t = new Uint32Array(256);
-  for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
-  return (_CRCT = t);
-}
-function crcBytes(d) {
-  var t = crcTable(), c = 0xFFFFFFFF;
-  for (var i = 0; i < d.length; i++) c = t[(c ^ d[i]) & 255] ^ (c >>> 8);
-  return (c ^ 0xFFFFFFFF) >>> 0;
-}
-function pngChunk(type, data) {
-  var typeB = new TextEncoder().encode(type);
-  var out = new Uint8Array(12 + data.length);
-  var dv = new DataView(out.buffer);
-  dv.setUint32(0, data.length);
-  out.set(typeB, 4);
-  out.set(data, 8);
-  dv.setUint32(8 + data.length, crcBytes(out.subarray(4, 8 + data.length)));
-  return out;
-}
-function deflateBytes(bytes) {
-  return new Promise(function (resolve, reject) {
-    if (typeof CompressionStream === 'undefined') { reject(new Error('CompressionStream unsupported')); return; }
-    var cs = new CompressionStream('deflate');
-    var w = cs.writable.getWriter();
-    w.write(bytes).then(function () { return w.close(); }).then(function () {
-      return new Response(cs.readable).arrayBuffer();
-    }).then(function (b) { resolve(new Uint8Array(b)); }).catch(reject);
-  });
-}
-/* median-cut color quantization */
-function quantizeColors(samples, maxColors) {
-  var N = samples.length / 3;
-  if (!N) return [[0, 0, 0]];
-  var idx = new Uint32Array(N);
-  for (var i = 0; i < N; i++) idx[i] = i;
-  function mkBox(lo, hi) {
-    var rmin = 255, rmax = 0, gmin = 255, gmax = 0, bmin = 255, bmax = 0;
-    for (var i = lo; i < hi; i++) {
-      var p = idx[i] * 3, r = samples[p], g = samples[p + 1], b = samples[p + 2];
-      if (r < rmin) rmin = r; if (r > rmax) rmax = r;
-      if (g < gmin) gmin = g; if (g > gmax) gmax = g;
-      if (b < bmin) bmin = b; if (b > bmax) bmax = b;
-    }
-    return { lo: lo, hi: hi, rmin: rmin, rmax: rmax, gmin: gmin, gmax: gmax, bmin: bmin, bmax: bmax };
-  }
-  var boxes = [mkBox(0, N)];
-  while (boxes.length < maxColors) {
-    var bi = -1, best = 0, k;
-    for (k = 0; k < boxes.length; k++) {
-      var bx = boxes[k];
-      if (bx.hi - bx.lo < 2) continue;
-      var sc = Math.max(bx.rmax - bx.rmin, bx.gmax - bx.gmin, bx.bmax - bx.bmin);
-      if (sc > best) { best = sc; bi = k; }
-    }
-    if (bi < 0 || best <= 0) break;
-    var box = boxes[bi];
-    var dr = box.rmax - box.rmin, dg = box.gmax - box.gmin, db = box.bmax - box.bmin;
-    var ax = (dr >= dg && dr >= db) ? 0 : (dg >= db ? 1 : 2);
-    var sub = Array.prototype.slice.call(idx.subarray(box.lo, box.hi));
-    sub.sort(function (a, b) { return samples[a * 3 + ax] - samples[b * 3 + ax]; });
-    for (k = 0; k < sub.length; k++) idx[box.lo + k] = sub[k];
-    var mid = (box.lo + box.hi) >> 1;
-    boxes.splice(bi, 1, mkBox(box.lo, mid), mkBox(mid, box.hi));
-  }
-  return boxes.map(function (bx) {
-    var r = 0, g = 0, b = 0, n = bx.hi - bx.lo || 1;
-    for (var i = bx.lo; i < bx.hi; i++) { var p = idx[i] * 3; r += samples[p]; g += samples[p + 1]; b += samples[p + 2]; }
-    return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
-  });
-}
-function buildPaletteLUT(pal) {
-  var lut = new Uint8Array(32768), P = pal.length, r, g, b, i;
-  for (r = 0; r < 32; r++) for (g = 0; g < 32; g++) for (b = 0; b < 32; b++) {
-    var R = r << 3, G = g << 3, B = b << 3, bi = 0, bd = 1e9;
-    for (i = 0; i < P; i++) {
-      var p = pal[i], dr = R - p[0], dg = G - p[1], db = B - p[2], d = dr * dr + dg * dg + db * db;
-      if (d < bd) { bd = d; bi = i; }
-    }
-    lut[(r << 10) | (g << 5) | b] = bi;
-  }
-  return lut;
-}
-/* GIF LZW (LSB-first, Weiner-style code-size growth) */
-function gifLZW(pixels, minCodeSize) {
-  var clear = 1 << minCodeSize, eoi = clear + 1, maxmax = 4096;
-  var codeSize = minCodeSize + 1, maxcode = (1 << codeSize) - 1, next = clear + 2;
-  var dict = new Map(), out = [], cur = 0, bits = 0;
-  function emit(code) {
-    cur |= code << bits;
-    bits += codeSize;
-    while (bits >= 8) { out.push(cur & 255); cur >>= 8; bits -= 8; }
-    if (next > maxcode) { if (codeSize < 12) { codeSize++; maxcode = (1 << codeSize) - 1; } else maxcode = maxmax; }
-  }
-  emit(clear);
-  var prefix = pixels[0];
-  for (var i = 1; i < pixels.length; i++) {
-    var k = pixels[i], key = prefix * 256 + k, got = dict.get(key);
-    if (got !== undefined) { prefix = got; continue; }
-    emit(prefix);
-    if (next < maxmax) { dict.set(key, next); next++; }
-    else { emit(clear); dict = new Map(); codeSize = minCodeSize + 1; maxcode = (1 << codeSize) - 1; next = clear + 2; }
-    prefix = k;
-  }
-  emit(prefix);
-  emit(eoi);
-  if (bits > 0) out.push(cur & 255);
-  return out;
-}
-function gifSubBlocks(bytes) {
-  var n = 0, i;
-  for (i = 0; i < bytes.length; i += 255) n += 1 + Math.min(255, bytes.length - i);
-  var out = new Uint8Array(n + 1), o = 0;
-  for (i = 0; i < bytes.length; i += 255) {
-    var c = Math.min(255, bytes.length - i);
-    out[o++] = c;
-    for (var j = 0; j < c; j++) out[o++] = bytes[i + j];
-  }
-  out[o] = 0;
-  return out;
-}
-function nextTick() { return new Promise(function (r) { requestAnimationFrame(function () { r(); }); }); }
+/* binary encoders, quantization and LZW now live in ./src/encoders.js */
 
 var EXPORT_FORMATS = {
   motion: [
@@ -970,14 +1034,14 @@ Garden.prototype.svgCtx = function () {
 Garden.prototype.posterSVG = function (t, scale) {
   var sc = this.svgCtx();
   this.posterDraw(sc.ctx, t, 1);
-  var size = Math.round(1080 * (scale || 1));
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size +
-    '" viewBox="0 0 1080 1080">' + sc.parts.join('') + '</svg>';
+  var W = Math.round(this.ZW * (scale || 1)), H = Math.round(this.ZH * (scale || 1));
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H +
+    '" viewBox="0 0 ' + this.ZW + ' ' + this.ZH + '">' + sc.parts.join('') + '</svg>';
 };
 Garden.prototype.stillBlob = function (scale, t, type, q) {
-  var self = this, size = Math.round(1080 * scale);
+  var self = this, W = Math.round(this.ZW * scale), H = Math.round(this.ZH * scale);
   return new Promise(function (res) {
-    var c = document.createElement('canvas'); c.width = c.height = size;
+    var c = document.createElement('canvas'); c.width = W; c.height = H;
     self.posterDraw(c.getContext('2d'), t, scale);
     c.toBlob(function (b) { res(b); }, type, q);
   });
@@ -1071,8 +1135,7 @@ Garden.prototype.runStill = function (fmt) {
     return this.stillBlob(s.scale, t, 'image/jpeg', 0.94).then(function (b) {
       return b.arrayBuffer();
     }).then(function (buf) {
-      var size = Math.round(1080 * s.scale);
-      self.dl(self.makePDF(new Uint8Array(buf), size, size), self.posterExportName('pdf'));
+      self.dl(self.makePDF(new Uint8Array(buf), Math.round(self.ZW*s.scale), Math.round(self.ZH*s.scale)), self.posterExportName('pdf'));
     });
   }
   var type = fmt === 'jpeg' ? 'image/jpeg' : fmt === 'webp' ? 'image/webp' : 'image/png';
@@ -1112,10 +1175,12 @@ Garden.prototype.runSequence = function (kind) {
   });
 };
 Garden.prototype._seqCanvas = function (scale) {
-  if (!this.__sc || this.__scScale !== scale) {
+  if (!this.__sc || this.__scScale !== scale || this.__scWidth !== this.ZW || this.__scHeight !== this.ZH) {
     this.__sc = document.createElement('canvas');
-    this.__sc.width = this.__sc.height = Math.round(1080 * scale);
+    this.__sc.width = Math.round(this.ZW * scale);
+    this.__sc.height = Math.round(this.ZH * scale);
     this.__scScale = scale;
+    this.__scWidth = this.ZW; this.__scHeight = this.ZH;
   }
   return this.__sc;
 };
@@ -1123,8 +1188,8 @@ Garden.prototype.exportVideoFmt = function (kind) {
   var self = this, s = this.expSettings(), P = this.P;
   var mime = this.pickVideoMime(kind);
   if (!mime) return Promise.reject(new Error('Video not supported in this browser'));
-  var size = Math.round(1080 * s.scale);
-  var c = document.createElement('canvas'); c.width = c.height = size;
+  var size = Math.round(this.ZW * s.scale);
+  var c = document.createElement('canvas'); c.width = size; c.height = Math.round(this.ZH * s.scale);
   var g = c.getContext('2d');
   var stream = c.captureStream(0), track = stream.getVideoTracks()[0];
   var rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: this.qualityValue('video') });
@@ -1154,17 +1219,17 @@ Garden.prototype.exportVideoFmt = function (kind) {
 };
 Garden.prototype.exportGIF = async function () {
   var self = this, s = this.expSettings(), P = this.P;
-  var w = Math.round(1080 * s.scale), N = Math.max(1, Math.round(P.T / 1000 * s.fps));
-  var c = document.createElement('canvas'); c.width = c.height = w;
+  var W = Math.round(this.ZW * s.scale), H = Math.round(this.ZH * s.scale), N = Math.max(1, Math.round(P.T / 1000 * s.fps));
+  var c = document.createElement('canvas'); c.width = W; c.height = H;
   var g = c.getContext('2d', { willReadFrequently: true });
   var per = Math.max(400, Math.floor(24000 / N));
-  var step = Math.max(1, Math.floor(Math.sqrt(w * w / per)));
+  var step = Math.max(1, Math.floor(Math.sqrt(W * H / per)));
   var samples = [], i, x, y;
   for (i = 0; i < N; i++) {
     self.posterDraw(g, i * 1000 / s.fps, s.scale);
-    var data = g.getImageData(0, 0, w, w).data;
-    for (y = 0; y < w; y += step) for (x = 0; x < w; x += step) {
-      var p = (y * w + x) * 4;
+    var data = g.getImageData(0, 0, W, H).data;
+    for (y = 0; y < H; y += step) for (x = 0; x < W; x += step) {
+      var p = (y * W + x) * 4;
       samples.push(data[p], data[p + 1], data[p + 2]);
     }
     self.prog(i, N * 2, 'Analyzing colors ' + Math.round(i / N * 100) + '%');
@@ -1173,7 +1238,7 @@ Garden.prototype.exportGIF = async function () {
   var pal = quantizeColors(samples, 256), lut = buildPaletteLUT(pal);
   var parts = [];
   parts.push(gBytes([71, 73, 70, 56, 57, 97])); // GIF89a
-  parts.push(gBytes(gU16(w).concat(gU16(w)).concat([0xF7, 0, 0])));
+  parts.push(gBytes(gU16(W).concat(gU16(H)).concat([0xF7, 0, 0])));
   var gct = new Uint8Array(768);
   for (i = 0; i < 256; i++) { var col = pal[i] || [0, 0, 0]; gct[i * 3] = col[0]; gct[i * 3 + 1] = col[1]; gct[i * 3 + 2] = col[2]; }
   parts.push(gct);
@@ -1181,12 +1246,12 @@ Garden.prototype.exportGIF = async function () {
   var delay = Math.max(2, Math.round(100 / s.fps));
   for (i = 0; i < N; i++) {
     self.posterDraw(g, i * 1000 / s.fps, s.scale);
-    var px = g.getImageData(0, 0, w, w).data;
-    var idx = new Uint8Array(w * w);
+    var px = g.getImageData(0, 0, W, H).data;
+    var idx = new Uint8Array(W * H);
     for (var q = 0; q < idx.length; q++) { var o = q * 4; idx[q] = lut[((px[o] >> 3) << 10) | ((px[o + 1] >> 3) << 5) | (px[o + 2] >> 3)]; }
     var lzw = gifLZW(idx, 8);
     parts.push(gBytes([0x21, 0xF9, 0x04, 0x04, delay & 255, (delay >> 8) & 255, 0, 0x00]));
-    parts.push(gBytes([0x2C].concat(gU16(0), gU16(0), gU16(w), gU16(w), [0x00])));
+    parts.push(gBytes([0x2C].concat(gU16(0), gU16(0), gU16(W), gU16(H), [0x00])));
     parts.push(gBytes([8]));
     parts.push(gifSubBlocks(lzw));
     self.prog(N + i, N * 2, 'Encoding GIF ' + Math.round(i / N * 100) + '%');
@@ -1199,23 +1264,23 @@ Garden.prototype.exportGIF = async function () {
 Garden.prototype.exportAPNG = async function () {
   if (typeof CompressionStream === 'undefined') throw new Error('APNG requires a newer browser');
   var self = this, s = this.expSettings(), P = this.P;
-  var w = Math.round(1080 * s.scale), N = Math.max(1, Math.round(P.T / 1000 * s.fps));
-  var c = document.createElement('canvas'); c.width = c.height = w;
+  var W = Math.round(this.ZW * s.scale), H = Math.round(this.ZH * s.scale), N = Math.max(1, Math.round(P.T / 1000 * s.fps));
+  var c = document.createElement('canvas'); c.width = W; c.height = H;
   var g = c.getContext('2d', { willReadFrequently: true });
   var parts = [gBytes([137, 80, 78, 71, 13, 10, 26, 10])];
-  parts.push(pngChunk('IHDR', gBytes(bU32(w).concat(bU32(w), [8, 6, 0, 0, 0]))));
+  parts.push(pngChunk('IHDR', gBytes(bU32(W).concat(bU32(H), [8, 6, 0, 0, 0]))));
   parts.push(pngChunk('acTL', gBytes(bU32(N).concat(bU32(0)))));
   var seq = 0;
   for (var i = 0; i < N; i++) {
     self.posterDraw(g, i * 1000 / s.fps, s.scale);
-    var id = g.getImageData(0, 0, w, w).data;
-    var raw = new Uint8Array((w * 4 + 1) * w), row = w * 4;
-    for (var yy = 0; yy < w; yy++) {
+    var id = g.getImageData(0, 0, W, H).data;
+    var raw = new Uint8Array((W * 4 + 1) * H), row = W * 4;
+    for (var yy = 0; yy < H; yy++) {
       raw[yy * (row + 1)] = 0;
       raw.set(id.subarray(yy * row, (yy + 1) * row), yy * (row + 1) + 1);
     }
     var comp = await deflateBytes(raw);
-    var fctl = gBytes(bU32(seq++).concat(bU32(w), bU32(w), bU32(0), bU32(0), bU16(1), bU16(s.fps), [0, 0]));
+    var fctl = gBytes(bU32(seq++).concat(bU32(W), bU32(H), bU32(0), bU32(0), bU16(1), bU16(s.fps), [0, 0]));
     parts.push(pngChunk('fcTL', fctl));
     if (i === 0) parts.push(pngChunk('IDAT', comp));
     else parts.push(pngChunk('fdAT', gConcat([gBytes(bU32(seq++)), comp])));
@@ -1237,7 +1302,7 @@ Garden.prototype.exportFormat = async function (fmt) {
     if (EXPORT_FORMATS.still.some(function (f) { return f.id === fmt; })) {
       await this.runStill(fmt);
       var ext = fmt === 'jpeg' ? 'jpg' : fmt;
-      this.setStatus('Saved ' + ext.toUpperCase() + ' \u00b7 ' + Math.round(1080 * s.scale) + 'px');
+      this.setStatus('Saved ' + ext.toUpperCase() + ' \u00b7 ' + Math.round(this.ZW * s.scale) + '\u00d7' + Math.round(this.ZH * s.scale));
     } else if (fmt === 'gif') {
       await this.exportGIF();
     } else if (fmt === 'apng') {
@@ -1301,7 +1366,7 @@ Garden.prototype.bind = function () {
     self.ptype = e.pointerType || 'mouse';
     if (e.target === self.cv) {
       if (self.touch) { try { self.inp.focus({ preventScroll: true }); } catch (err) {} }
-      self.spawnFly(e.clientX, e.clientY);
+      self.onTap(e.clientX, e.clientY);
     }
     if (!self.touch) self.refocus();
   });
@@ -1316,44 +1381,37 @@ Garden.prototype.bind = function () {
   document.addEventListener('pointerleave', function () { self.mx = null; self.my = null; });
 };
 
-/* ---------------- math ---------------- */
-Garden.prototype.h = function (n) { var x = Math.sin(n) * 43758.5453; return x - Math.floor(x); };
-Garden.prototype.spr = function (t, k, w) {
-  if (k == null) k = 7; if (w == null) w = 16;
-  if (t <= 0) return 0;
-  return 1 - Math.exp(-t * k) * Math.cos(t * w);
-};
-Garden.prototype.eo = function (t) { if (t <= 0) return 0; if (t >= 1) return 1; return 1 - Math.pow(1 - t, 3); };
-Garden.prototype.eb = function (t) {
-  if (t <= 0) return 0; if (t >= 1) return 1;
-  var c1 = 1.70158, c3 = c1 + 1;
-  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-};
-Garden.prototype.rng = function (seed) {
-  var s = seed | 0;
-  return function () {
-    s = (s + 0x6D2B79F5) | 0;
-    var t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-};
-Garden.prototype.bez = function (a, b, c, d, n) {
-  var P = [];
-  for (var i = 0; i <= n; i++) {
-    var t = i / n, u = 1 - t;
-    P.push([
-      u * u * u * a[0] + 3 * u * u * t * b[0] + 3 * u * t * t * c[0] + t * t * t * d[0],
-      u * u * u * a[1] + 3 * u * u * t * b[1] + 3 * u * t * t * c[1] + t * t * t * d[1]
-    ]);
+/* gestures: a single tap/click spawns a butterfly after a short delay, so a
+   second tap within 300ms can cancel it and bloom a new flower instead. */
+Garden.prototype.onTap = function (x, y) {
+  var now = performance.now(), self = this, t = this._tap;
+  if (t && (now - t.t) < 300 && Math.hypot(x - t.x, y - t.y) < 32) {
+    if (t.timer) clearTimeout(t.timer);
+    this._tap = null;
+    this.bloomAt(x, y);
+    return;
   }
-  return P;
+  var tap = { x: x, y: y, t: now, timer: 0 };
+  tap.timer = setTimeout(function () {
+    if (self._tap === tap) { self._tap = null; self.spawnFly(x, y); }
+  }, 250);
+  this._tap = tap;
 };
-Garden.prototype.at = function (P, u) {
-  var n = P.length;
-  var i = Math.min(n - 2, Math.max(1, Math.round(u * (n - 1))));
-  return [P[i], Math.atan2(P[i + 1][1] - P[i - 1][1], P[i + 1][0] - P[i - 1][0])];
+Garden.prototype.bloomAt = function (cx, cy) {
+  if (!this.W) return;
+  var now = performance.now();
+  var l = {
+    free: true, ch: '', id: this.uid++, birth: now, tb: now,
+    ws: Math.floor(this.rand() * 1e9), wi: 0, prev: null
+  };
+  this.gen(l);
+  l.x = cx; l.y = cy; l.tx = cx; l.ty = cy;
+  this.flowers.push(l);
 };
+
+/* ---------------- math ---------------- */
+/* h, spr, eo, eb, rng, bez, at are imported from ./src/math.js and
+   attached to Garden.prototype above. */
 Garden.prototype.jit = function (id, f, amp) {
   if (!amp) return [0, 0, 0];
   return [
@@ -1812,11 +1870,14 @@ Garden.prototype.render = function (B, now, st) {
   var amp = st.boil ? Math.max(0.8, S * 0.01) : 0;
   var self = this;
   function kd(ll) { return ll.dead ? 1 - self.eo((now - ll.dead) / st.wither) : 1; }
-  var act = [];
-  for (i = 0; i < L.length; i++) if (!L[i].dead) act.push(L[i]);
-  function draw(layer) {
-    for (var li = 0; li < L.length; li++) {
-      var ll = L[li];
+  function active(list) {
+    var out = [];
+    for (var ai = 0; ai < list.length; ai++) if (!list[ai].dead) out.push(list[ai]);
+    return out;
+  }
+  function draw(layer, list, act) {
+    for (var li = 0; li < list.length; li++) {
+      var ll = list[li];
       if (ll.ch === ' ' || !ll.els) continue;
       var age = (now - ll.birth) * sp, kk = kd(ll);
       var each = function (e) {
@@ -1833,12 +1894,20 @@ Garden.prototype.render = function (B, now, st) {
       }
     }
   }
-  draw(0);
+  var act = active(L);
+  draw(0, L, act);
   for (i = 0; i < L.length; i++) {
     l = L[i];
     if (l.ch !== ' ' && (st.textAll || !l.dead)) B.text(l.ch, l.x, l.y, S, st.C.text);
   }
-  draw(1);
+  draw(1, L, act);
+  /* double-tap blooms: free-standing flowers that only live in Type mode */
+  var FL = st.flowers;
+  if (FL && FL.length) {
+    var actF = active(FL);
+    draw(0, FL, actF);
+    draw(1, FL, actF);
+  }
 };
 
 /* ---------------- butterflies ---------------- */
@@ -1967,7 +2036,7 @@ Garden.prototype.key = function (e) {
   this._kd = true;
   setTimeout(function () { self._kd = false; }, 0);
   if (e.key === 'Backspace') { e.preventDefault(); this.wither(now); return; }
-  if (e.key === 'Enter') { e.preventDefault(); this.letters = []; this.layout(); return; }
+  if (e.key === 'Enter') { e.preventDefault(); this.letters = []; this.flowers = []; this.layout(); return; }
   if (e.key === ' ') { e.preventDefault(); this.add(' ', now); return; }
   if (e.key && e.key.length === 1) { e.preventDefault(); this.add(e.key, now); return; }
 };
@@ -2012,7 +2081,7 @@ Garden.prototype.inputDiff = function (el) {
   for (var j = p; j < cur.length; j++) {
     var ch = cur[j];
     if (ch === SENT) continue;
-    if (ch.charCodeAt(0) === 10) { this.letters = []; this.layout(); }
+    if (ch.charCodeAt(0) === 10) { this.letters = []; this.flowers = []; this.layout(); }
     else this.add(ch, now);
   }
   if (this.composing) this.iv = cur;
@@ -2023,6 +2092,7 @@ Garden.prototype.inputDiff = function (el) {
 Garden.prototype.mainState = function () {
   return {
     letters: this.letters,
+    flowers: this.flowers,
     S: this.Sd,
     C: this.pal().C,
     boil: this.opts.boil,
