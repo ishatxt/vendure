@@ -1,6 +1,6 @@
 # What was done — Vendure
 
-Status: **Phases 0–3 complete and verified.**
+Status: **Phases 0–3, 5, 7 complete and verified.**
 
 ## Overview
 
@@ -9,7 +9,7 @@ split the pure helpers into ES modules, made the poster size aspect-aware,
 added persistence/sharing, and added tap gestures. The goal was to land
 **Phases 0–2 of a 7-phase roadmap**.
 
-Roadmap (0–3, 5 done):
+Roadmap (0–3, 5, 7 done):
 
 - Phase 0 — module split, `ZW/ZH` poster-dimension refactor, state schema
 - Phase 1 — persistence & sharing
@@ -18,7 +18,7 @@ Roadmap (0–3, 5 done):
 - Phase 4 — export / Lottie *(not started)*
 - Phase 5 — interaction / editing *(completed this session)*
 - Phase 6 — audio export (separate WAV) *(not started)*
-- Phase 7 — perf / a11y / PWA *(not started)*
+- Phase 7 — perf / a11y / PWA *(completed this session)*
 
 ## Files
 
@@ -30,8 +30,11 @@ Roadmap (0–3, 5 done):
 | `src/palettes.js` | `PAL` (13 palettes). |
 | `src/state.js` | `STATE_VERSION, STORAGE_KEY, ASPECTS, defaultState, stateToHash, hashToState, loadSaved, saveSaved, clearSaved, absURL, shareOrCopy, copyText, copyBlob`. |
 | `src/_app.mjs` | Generated Node mirror of the inline module script (only import paths differ). Used for headless testing. |
+| `manifest.json` | PWA web app manifest (standalone, dark, icons). |
+| `sw.js` | Service worker: precached app shell + runtime Google-Fonts cache (offline). |
+| `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` | Generated app icons (script in `/tmp/opencode/genicon.mjs`). |
 | `package.json` | `"type":"module"`, `npm test`, `npm run serve`. |
-| `test/run.js` | Node test harness — 26 assertions, all passing. |
+| `test/run.js` | Node test harness — 29 assertions, all passing. |
 
 ## Phase 0 — module split + aspect refactor + state schema
 
@@ -236,11 +239,35 @@ Open `http://localhost:8080` and type to grow a garden. Tap once for a
 butterfly (appears after 250 ms); double-tap to bloom a flower. Click **Edit**
 to drag letters around or delete them.
 
+## Phase 7 — perf / a11y / PWA (completed this session)
+
+- **Reduced motion**: `this.reduce` reads `prefers-reduced-motion: reduce` on
+  boot and a `matchMedia('change')` listener keeps it live. `mainState()` then
+  returns `sway: 0`, `boil: false`, `face: false`, `speed: 999` (growth completes
+  instantly) and `wither: 1`; `wpt()` skips the birth "pop" when `st.reduce`.
+  Poster mode is intentionally left at full motion (it is an animation tool).
+- **DPR cap**: `resize()` clamps `devicePixelRatio` to 2 — the 3× buffer cost
+  isn't worth the visual gain.
+- **Background pause**: the rAF loop skips `frame()` while `document.hidden`, and
+  a `visibilitychange` handler resets `this.lt` so returning doesn't jump.
+- **Focus + ARIA**: `:focus-visible` outline on `#app`/`#pexp` controls (with
+  `:focus:not(:focus-visible)` removed); `#cv` labelled; `#modes` is a labelled
+  `role="group"`; mode buttons carry `aria-pressed`. New
+  `updateModeButtons()` is the single source of truth for the active highlight
+  and `aria-pressed` (called from both `syncEmode()` and `setMode()`).
+- **PWA**: added `manifest.json` (standalone, dark, 192/512 + maskable icons),
+  generated PNG icons (`genicon.mjs`), `<link rel="manifest">`, theme-color,
+  apple-touch meta, and a root `sw.js` service worker. The SW precaches the app
+  shell, does network-first for navigations (so a redeploy shows up) and
+  stale-while-revalidate for same-origin assets, plus a cache-first strategy for
+  Google Fonts so the typeface survives offline. Registration is skipped on
+  `file://`.
+
 ## Next steps
 
 - Phase 3 — generative parameter ranges — **done**.
 - Phase 5 — interaction / editing — **done**.
-- Remaining: Phase 4 (Lottie export), Phase 6 (audio/WAV export), Phase 7
-  (perf / a11y / PWA).
+- Phase 7 — perf / a11y / PWA — **done**.
+- Remaining: Phase 4 (Lottie export), Phase 6 (audio/WAV export).
 - Optionally add the jsdom smoke test into `test/` (jsdom as a devDependency) so
   the DOM/integration coverage runs under `npm test`.
