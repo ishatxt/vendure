@@ -18,6 +18,8 @@ a:hover { color: #FFB4A8; }
   -webkit-user-select: none; user-select: none;
 }
 #app button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; font-family: inherit; cursor: pointer; }
+#app :focus-visible, #pexp :focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
+#app :focus:not(:focus-visible) { outline: none; }
 #app.emode, #app.emode #cv { cursor: grab; }
 #app.emode.dragging, #app.emode.dragging #cv { cursor: grabbing; }
 html[data-touch] #app { touch-action: none; }
@@ -224,15 +226,15 @@ html[data-touch] #app { touch-action: none; }
 </head>
 <body>
 <div id="app">
-  <canvas id="cv"></canvas>
+  <canvas id="cv" aria-label="Vendure garden canvas. Type to grow a garden."></canvas>
   <div id="peers" aria-hidden="true"></div>
   <input id="inp" type="text" aria-label="Type to grow a garden" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
   <div id="toast" role="status" aria-live="polite"></div>
 
-  <div id="modes">
-    <button class="mode active" data-mode="type">Type</button>
-    <button class="mode" data-mode="edit">Edit</button>
-    <button class="mode" data-mode="poster">Poster</button>
+  <div id="modes" role="group" aria-label="View mode">
+    <button class="mode active" data-mode="type" aria-pressed="true">Type</button>
+    <button class="mode" data-mode="edit" aria-pressed="false">Edit</button>
+    <button class="mode" data-mode="poster" aria-pressed="false">Poster</button>
   </div>
 
   <div id="poster" hidden>
@@ -430,6 +432,7 @@ function Garden() {
   this._kd = false;
   this.touch = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
   this.ptype = 'mouse';
+  this.reduce = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   this.F = FONT;
 
   this.pcv = document.getElementById('pcv');
@@ -483,7 +486,16 @@ function Garden() {
   this.syncUI();
   if (this._wantMode === 'poster') this.setMode('poster');
   this.lt = performance.now();
-  (function loop() { self.raf = requestAnimationFrame(loop); self.frame(); })();
+  (function loop() { self.raf = requestAnimationFrame(loop); if (!document.hidden) self.frame(); })();
+  /* respect the OS "reduce motion" setting live, without a reload */
+  if (window.matchMedia) {
+    var rq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    var onr = function () { self.reduce = rq.matches; self.changed(); };
+    if (rq.addEventListener) rq.addEventListener('change', onr);
+    else if (rq.addListener) rq.addListener(onr);
+  }
+  /* drop the giant dt accumulated while the tab was backgrounded */
+  document.addEventListener('visibilitychange', function () { self.lt = performance.now(); });
 
   if (!this.touch) setTimeout(function () { try { self.inp.focus({ preventScroll: true }); } catch (e) {} }, 60);
 }
@@ -906,9 +918,6 @@ Garden.prototype.setMode = function (mode) {
     this.refocus();
   }
   this.syncEmode();
-  Array.prototype.forEach.call(document.querySelectorAll('#modes .mode'), function (b) {
-    b.classList.toggle('active', b.getAttribute('data-mode') === mode);
-  });
   this.applyPalette();
   this.changed();
 };
@@ -918,14 +927,22 @@ Garden.prototype.syncEmode = function () {
   this.app.classList.toggle('emode', on);
   var hint = document.getElementById('edithint');
   if (hint) hint.hidden = !on;
-  Array.prototype.forEach.call(document.querySelectorAll('#modes .mode'), function (b) {
-    var dm = b.getAttribute('data-mode');
-    if (dm === 'type') b.classList.toggle('active', !on);
-    if (dm === 'edit') b.classList.toggle('active', on);
-  });
+  this.updateModeButtons();
   var hintFine = document.getElementById('hints');
   if (hintFine) hintFine.classList.toggle('editing', on);
   if (!on) { this.sel = null; this.drag = null; this.app.classList.remove('dragging'); }
+};
+/* single source of truth for the Type/Edit/Poster button highlight + aria */
+Garden.prototype.updateModeButtons = function () {
+  var self = this;
+  Array.prototype.forEach.call(document.querySelectorAll('#modes .mode'), function (b) {
+    var dm = b.getAttribute('data-mode');
+    var active = (dm === 'poster') ? (self.mode === 'poster')
+      : (dm === 'edit') ? self.emode
+        : (self.mode === 'type' && !self.emode);
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
 };
 Garden.prototype.buildPoster = function () {
   var self = this, pr = this.pr(), text = (this.ptext || '').slice(0, 40) || ' ';
@@ -1682,7 +1699,9 @@ Garden.prototype.backend = function (g) {
 
 /* ---------------- layout ---------------- */
 Garden.prototype.resize = function () {
-  var c = this.cv, r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  var c = this.cv, r = c.getBoundingClientRect();
+  /* cap DPR at 2: past that the pixel cost isn't worth the visual gain */
+  var d = Math.min(window.devicePixelRatio || 1, 2);
   if (!r.width || !r.height) return;
   this.W = r.width; this.H = r.height; this.dpr = d;
   c.width = Math.round(r.width * d);
@@ -2027,7 +2046,7 @@ Garden.prototype.rose = function (B, cx, cy, R, rot, e, a, tl) {
   }
 };
 Garden.prototype.wpt = function (st, l, x, y) {
-  if (l.birth != null && this._now != null) {
+  if (!st.reduce && l.birth != null && this._now != null) {
     var t = (this._now - l.birth) * (st.speed || 1) / 1000;
     if (t > 0 && t < 2.5) {
       var hh = Math.max(0, (l.y - y) / st.S), dmp = Math.exp(-t * 3.2), dir = (l.id % 2 ? 1 : -1);
@@ -2338,17 +2357,20 @@ Garden.prototype.inputDiff = function (el) {
 
 /* ---------------- frame ---------------- */
 Garden.prototype.mainState = function () {
+  var red = this.reduce;
   return {
     letters: this.letters,
     flowers: this.flowers,
     S: this.Sd,
     C: this.pal().C,
-    boil: this.opts.boil,
+    boil: red ? false : this.opts.boil,
     recoil: this.opts.recoil,
-    speed: 1,
-    wither: 260,
-    sway: MOTION.sway,
-    face: true
+    /* high speed makes growth complete instantly under reduced motion */
+    speed: red ? 999 : 1,
+    wither: red ? 1 : 260,
+    sway: red ? 0 : MOTION.sway,
+    reduce: red,
+    face: !red
   };
 };
 Garden.prototype.paint = function (now) {
