@@ -105,6 +105,10 @@ function Garden() {
   this.iv = SENT;
   this.inp.value = SENT;
   this.resize();
+  /* replay a shared/autosaved garden's words into the live canvas (Type mode) */
+  if (this._wantMode !== 'poster' && bootState && typeof bootState.ptext === 'string' && bootState.ptext) {
+    this.typeText(bootState.ptext);
+  }
 
   var self = this;
   if (document.fonts) {
@@ -308,7 +312,7 @@ Garden.prototype.serialize = function () {
     v: STATE_VERSION,
     palette: this.palette,
     preset: this.preset,
-    ptext: this.ptext,
+    ptext: this.mode === 'type' ? this.liveText() : this.ptext,
     seed: this.seed,
     mode: this.mode,
     aspect: this.aspect,
@@ -399,8 +403,14 @@ Garden.prototype.loadJSON = function (file) {
       var s = JSON.parse(String(reader.result));
       self.applyState(s);
       self.syncUI();
-      self.buildPoster();
-      if (self._wantMode === 'poster') self.setMode('poster');
+      self.letters = []; self.flowers = [];
+      if (self._wantMode === 'poster') {
+        self.setMode('poster');
+        self.buildPoster();
+      } else {
+        if (self.mode !== 'type') self.setMode('type');
+        if (typeof s.ptext === 'string' && s.ptext) self.typeText(s.ptext);
+      }
       self.changed();
       self.setStatus('Loaded project');
     } catch (e) { self.setStatus('Invalid project file'); }
@@ -439,6 +449,22 @@ Garden.prototype.pr = function () {
 Garden.prototype.setStatus = function (t) {
   this.status = t;
   var el = document.getElementById('pstatus'); if (el) el.textContent = t || '';
+  /* the poster panel (and its status line) is hidden in Type mode, so surface
+     a transient toast there for share / copy / save feedback */
+  if (this.mode !== 'poster') this.toast(t);
+};
+Garden.prototype.toast = function (t) {
+  var el = document.getElementById('toast'); if (!el) return;
+  if (this._toastTimer) { clearTimeout(this._toastTimer); this._toastTimer = null; }
+  if (!t) { el.classList.remove('on'); return; }
+  el.textContent = t;
+  el.classList.add('on');
+  var self = this;
+  this._toastTimer = setTimeout(function () { el.classList.remove('on'); self._toastTimer = null; }, 2800);
+};
+Garden.prototype.typeText = function (str) {
+  var now = performance.now(), s = String(str || '').slice(0, 40);
+  for (var i = 0; i < s.length; i++) this.add(s[i], now);
 };
 Garden.prototype.setBusy = function (b) {
   this.busy = b;
@@ -1714,6 +1740,7 @@ Garden.prototype.add = function (ch, now) {
     if (last && last.ch !== ' ') { last.cut = now; this.genEnd(last, now - last.birth); }
     this.letters.push({ ch: ' ', id: this.uid++, birth: now, els: [] });
     this.layout();
+    this.changed();
     return;
   }
   var same = last && last.ch !== ' ';
@@ -1726,6 +1753,7 @@ Garden.prototype.add = function (ch, now) {
   this.gen(l);
   this.letters.push(l);
   this.layout();
+  this.changed();
 };
 Garden.prototype.wither = function (now) {
   var A = this.letters.filter(function (l) { return !l.dead; });
@@ -1735,6 +1763,7 @@ Garden.prototype.wither = function (now) {
   var pv = A[A.length - 2];
   if (pv && pv.ch !== ' ') { pv.cut = null; pv.endEls = null; pv.tb = now; }
   this.layout();
+  this.changed();
 };
 Garden.prototype.inputDiff = function (el) {
   if (this.mode !== 'type' || this._kd) { this.iv = this.composing ? el.value : SENT; if (!this.composing) el.value = SENT; return; }
