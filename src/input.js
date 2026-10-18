@@ -167,6 +167,10 @@ Garden.prototype.syncSliders = function () {
 /* ---------------- input ---------------- */
 Garden.prototype.key = function (e) {
   if (this.mode !== 'type') return;
+  /* text fields own their keystrokes: the share dialog's name/message inputs
+     (and anything else with a caret) must not also grow garden letters */
+  var t = e.target;
+  if (t && t !== this.inp && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
   if (e.metaKey || e.ctrlKey || e.altKey) {
     if ((e.metaKey || e.ctrlKey) && e.key && e.key.toLowerCase() === 's') {
       e.preventDefault();

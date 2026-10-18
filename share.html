@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" data-state="loading">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>A little gift · Vendure</title>
+<meta name="description" content="Someone grew you a garden in Vendure. Open the link to watch it bloom.">
+<meta name="theme-color" content="#0A0A0A">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Vendure">
+<link rel="icon" type="image/png" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/share.css">
+</head>
+
+<body>
+<main id="gift">
+  <header id="ghead">
+    <p class="eyebrow" id="geyebrow">A little gift for you</p>
+    <h1 id="gname"></h1>
+    <p class="fromto" id="gfromto" hidden></p>
+    <span class="rule" aria-hidden="true"><i></i></span>
+  </header>
+
+  <div id="gstage">
+    <canvas id="cv" role="img" aria-label="A living garden of letters"></canvas>
+    <p id="gmsg" class="sr"></p>
+  </div>
+
+  <footer id="gfoot">
+    <p class="note" id="gplay" hidden>Tap the garden to call a butterfly</p>
+    <a class="cta" id="gcta" href="index.html">Create your own garden</a>
+    <p class="sig">grown with <a href="index.html">Vendure</a></p>
+  </footer>
+
+  <section id="gerror" hidden>
+    <p class="eyebrow">Vendure</p>
+    <h2 id="gerrhead">No garden in this link</h2>
+    <p id="gerrsub">This address carries no shared garden. Grow one worth sending.</p>
+    <a class="cta" href="index.html">Create your own garden</a>
+  </section>
+</main>
+
+<noscript>
+  <div id="gns">
+    <p>This gift page needs JavaScript to grow its garden.</p>
+    <p><a href="index.html">Open Vendure</a></p>
+  </div>
+</noscript>
+
+<script type="module" src="src/share-page.js"></script>
+</body>
+</html>

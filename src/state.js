@@ -1,8 +1,15 @@
 /* Persistence, permalink and sharing helpers.
    These operate on plain serializable state objects (no Garden/DOM coupling). */
 
+import { PAL } from './palettes.js';
+
 export var STATE_VERSION = 1;
 export var STORAGE_KEY = 'typegarden.v1';
+
+/* recipient share links (share.html): a permalink plus a gift envelope */
+export var SHARE_VERSION = 1;
+export var SHARE_NAME_MAX = 32;
+export var SHARE_TEXT_MAX = 40;
 
 /* aspect ratio -> [width, height] in poster units */
 export var ASPECTS = {
@@ -104,6 +111,130 @@ export function clearSaved() {
 export function absURL(hash) {
   var u = location.origin === 'null' ? location.href.split('#')[0] : location.origin + location.pathname + location.search;
   return u + (hash ? '#' + hash : '');
+}
+
+/* ---------------- recipient share links (share.html) ----------------
+   A gift link is a normal garden permalink plus a small, versioned envelope of
+   gift fields, all carried in the URL fragment so nothing is ever uploaded:
+
+     share.html#p=0&k=breathe&w=you%20are%20my%20favourite&s=7&sv=1&f=Sam&t=Alex
+
+   The garden keys (p/k/w/s/a/o/d) are exactly the permalink keys understood by
+   hashToState(), so the same fragment also opens normally in index.html. */
+
+/* trim, drop control characters/line breaks, collapse runs of whitespace and
+   clamp on code-point boundaries so surrogate pairs (emoji) never get sliced */
+export function cleanText(v, max) {
+  var s = String(v == null ? '' : v);
+  s = s.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  var cp = Array.from(s);
+  return cp.length > max ? cp.slice(0, max).join('') : s;
+}
+
+/* The subset of a message a single canvas glyph can draw.
+   Astral code points (emoji), lone surrogates, variation selectors and
+   combining marks would each ask the canvas for a letter it cannot draw,
+   leaving blank slots, so they stay in the message but not in the artwork. */
+export function artText(v, max) {
+  var cp = Array.from(cleanText(v, max)), out = '';
+  for (var i = 0; i < cp.length; i++) {
+    var c = cp[i].codePointAt(0);
+    if (c > 0xffff) continue;                     /* emoji and other astral pairs */
+    if (c >= 0xd800 && c <= 0xdfff) continue;     /* lone surrogate halves */
+    if (c >= 0xfe00 && c <= 0xfe0f) continue;     /* variation selectors */
+    if (c >= 0x0300 && c <= 0x036f) continue;     /* combining marks */
+    if (c === 0x00ad) continue;                   /* soft hyphen */
+    out += cp[i];
+  }
+  return out.replace(/\s+/g, ' ').trim();
+}
+
+function cl(v, lo, hi, dflt) {
+  var n = parseFloat(v);
+  if (isNaN(n)) return dflt;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/* state + gift fields -> share hash (no leading '#') */
+export function shareToHash(msg, from, to, state) {
+  var s = state || {};
+  var q = new URLSearchParams(stateToHash({
+    palette: s.palette,
+    preset: s.preset,
+    ptext: cleanText(msg, SHARE_TEXT_MAX),
+    seed: s.seed,
+    aspect: s.aspect,
+    opts: s.opts,
+    offs: s.offs
+  }));
+  q.set('sv', String(SHARE_VERSION));
+  var f = cleanText(from, SHARE_NAME_MAX), t = cleanText(to, SHARE_NAME_MAX);
+  if (f) q.set('f', f);
+  if (t) q.set('t', t);
+  return q.toString();
+}
+
+/* share hash -> validated gift payload. Never throws: a hand-edited or
+   truncated link comes back as { ok:false, reason:'…' }.
+   reasons: 'empty' (no data) · 'legacy' (permalink without an envelope) ·
+   'version' (made by a newer Vendure) · 'corrupt' (unparseable numbers etc.) */
+export function parseShare(hash) {
+  var out = { ok: false, reason: 'empty', from: '', to: '', message: '', state: null };
+  var raw = String(hash == null ? '' : hash).replace(/^#/, '').trim();
+  if (!raw) return out;
+  var q;
+  try { q = new URLSearchParams(raw); } catch (e) { out.reason = 'corrupt'; return out; }
+  if (![...q.keys()].length) return out;
+  var sv = q.get('sv');
+  if (sv == null) { out.reason = 'legacy'; return out; }
+  var v = parseInt(sv, 10);
+  if (isNaN(v) || v < 1) { out.reason = 'corrupt'; return out; }
+  if (v > SHARE_VERSION) { out.reason = 'version'; return out; }
+  var st;
+  try { st = hashToState(raw); } catch (e) { st = null; }
+  if (!st) { out.reason = 'corrupt'; return out; }
+  /* clamp everything a hand-edited URL could exaggerate */
+  st.palette = Math.max(0, Math.min(PAL.length - 1, Math.floor(st.palette) || 0));
+  if (st.opts) {
+    st.opts.density = cl(st.opts.density, 0.2, 3, 1);
+    st.opts.curvy = cl(st.opts.curvy, 0.2, 3, 1);
+    st.opts.size = cl(st.opts.size, 0.3, 2.5, 1);
+    st.opts.roses = cl(st.opts.roses, 0, 3, 1);
+    st.opts.recoil = cl(st.opts.recoil, 0, 120, 20);
+    if (typeof st.opts.boil !== 'boolean') st.opts.boil = true;
+  }
+  if (st.offs) {
+    st.offs = st.offs
+      .filter(function (o) { return o[0] >= 0 && o[0] < 200; })
+      .map(function (o) { return [o[0], cl(o[1], -4000, 4000, 0), cl(o[2], -4000, 4000, 0)]; });
+  }
+  out.ok = true;
+  out.reason = '';
+  out.message = cleanText(q.get('w') != null ? q.get('w') : st.ptext, SHARE_TEXT_MAX);
+  out.from = cleanText(q.get('f') || '', SHARE_NAME_MAX);
+  out.to = cleanText(q.get('t') || '', SHARE_NAME_MAX);
+  out.state = st;
+  return out;
+}
+
+/* absolute URL of a sibling page, so links keep working when the app is
+   hosted in a subdirectory (e.g. https://host/vendure/share.html#…) */
+export function pageURL(page, hash) {
+  var base;
+  if (location.origin && location.origin !== 'null') {
+    var path = location.pathname || '/';
+    if (path.charAt(path.length - 1) !== '/') {
+      var seg = path.split('/').pop() || '';
+      path = seg.indexOf('.') === -1 ? path + '/' : path.replace(/[^/]*$/, '');
+    }
+    base = location.origin + path;
+  } else {
+    /* file:// (the app is not servable that way, but never throw) */
+    base = String(location.href || '').split('?')[0].split('#')[0].replace(/[^/]*$/, '');
+  }
+  return base + page + (hash ? '#' + hash : '');
 }
 
 export async function shareOrCopy(url, title, text) {

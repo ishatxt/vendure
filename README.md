@@ -30,7 +30,7 @@ print-ready PDF.
 | **Living motion** | Stems grow on damped springs, leaves unfurl, petals open, and the garden idles and sways. |
 | **Butterflies** | Tap to summon one — it flies in, perches on a rose, wanders, and leaves. |
 | **13 palettes** | From *Rose noir* to *Cyanotype*, plus four generative sliders and seven motion presets. |
-| **Share & persist** | Every garden has a permalink; state autosaves to `localStorage` and restores on reload. |
+| **Share & persist** | Every garden has a permalink; the **Share** button turns yours into a gift page for a named recipient. State autosaves to `localStorage` and restores on reload. |
 | **Rich export** | Video, GIF, APNG, SVG and PNG sequences, plus PDF and vector stills — up to 4× resolution. |
 | **Offline PWA** | An app-shell service worker and a cache-first font strategy keep it running with no network. |
 | **Accessible** | Honours `prefers-reduced-motion`, labels every control, and pauses rendering while the tab is hidden. |
@@ -81,12 +81,44 @@ suite (no `npm install` required — Node 18+ with ES modules):
 npm test
 ```
 
-This runs two suites:
+This runs three suites:
 
 | Suite | What it covers |
 | :-- | :-- |
-| `test/run.js` | Endianness, CRC-32, GIF LZW round-trips, colour quantizer, palette LUT, math helpers, state hashing, aspect table |
-| `test/modules.js` | Imports the **real** ES modules against a minimal DOM stub and exercises typing, growth, butterflies, poster and export paths |
+| `test/run.js` | Endianness, CRC-32, GIF LZW round-trips, colour quantizer, palette LUT, math helpers, state hashing, aspect table, gift-link serialisation and parsing |
+| `test/modules.js` | Imports the **real** ES modules against a minimal DOM stub and exercises typing, growth, butterflies, poster and export paths, the share dialog and the gift artwork |
+| `test/gift.js` | Boots the recipient page's module graph in its own process (deliberately *without* the editor modules) from a real gift link, and renders it, including reduced motion |
+
+## Sharing a garden
+
+Both kinds of link live entirely in the URL fragment: no server, no account,
+nothing uploaded.
+
+**Gift links** are what the **Share** button does. The dialog asks for a
+**From** and a **To** name (the sender name is remembered locally) and prefills
+the **message** with the words currently growing in your garden. *Create share
+link* builds a `share.html#…` URL you can copy, open in a native share sheet, or
+preview in a new tab.
+
+The recipient sees a page made only for them: their name in large type, the
+message grown as a living garden they can tap, and a discreet *Create your own
+garden* button — no editor controls, no typing field, no export panels. The
+palette, sliders, seed and any hand-placed letters travel with the link, so the
+artwork matches what you composed. If you leave the message empty the garden
+spells the recipient's name instead. Emoji stay in the message but are not drawn
+as garden letters, and `prefers-reduced-motion` shows the garden fully grown with
+nothing animating.
+
+**Plain garden links** are still available: *Copy the plain garden link instead*
+in the dialog (previously the poster panel's `Share link`) opens the normal
+editor with that garden loaded, exactly as before.
+
+> **Privacy:** anyone who has a gift link can read it. The names, the message and
+> the garden settings are encoded — **not encrypted** — in the part of the URL
+> after `#`. That keeps them out of server logs and off the network entirely, but
+> the link itself should not be treated as private. Gift pages are marked
+> `noindex`, opening a link never requires any locally stored data, and nothing
+> about the recipient is stored on your device beyond the sender name you type.
 
 ## Exporting
 
@@ -132,18 +164,21 @@ Both tabs share resolution (1×/2×/4×), frame rate, quality and aspect
 
 ```
 index.html            app shell — markup only; boots the module entry point
+share.html            recipient page — the gift view, no editor UI at all
 manifest.json         PWA manifest
 sw.js                 service worker — offline shell + font cache (must stay at root)
 src/
   app.js              entry point: imports every module, starts the Garden
+  share-page.js       recipient page: parse the link, mount the artwork, greet
   garden.js           Garden constructor + prototype math helpers
   constants.js        FONT, SENT, MOTION, PRESETS
   math.js             pure math / easing / noise helpers        (DOM-free)
   encoders.js         pure binary encoders (PNG/GIF/APNG/zip)   (DOM-free)
-  state.js            pure persistence + permalink helpers       (DOM-free)
-  palettes.js         13 colour palettes
+  state.js            pure persistence + permalink/share helpers (DOM-free)
+  palettes.js         13 colour palettes + palette lookup
   ui.js               palette swatches, poster panel, export dialog
   garden-state.js     serialize / applyState, persistence, share links
+  share.js            gift dialog: names, message, link, copy & native share
   poster.js           poster mode: build, draw, modes, status
   export.js           PNG/GIF/APNG/video/SVG/PDF/zip export
   input.js            keyboard, gestures, edit mode, sliders
@@ -152,10 +187,12 @@ src/
   growth.js           vine / curl / weave generative growth
   butterflies.js      butterfly spawn, perch, flight
   frame.js            main state, paint, rAF loop
-  style.css           all styles
+  style.css           all editor styles
+  share.css           recipient page styles
 test/
-  run.js              Node test harness
-  modules.js          module-graph smoke test
+  run.js              Node test harness (pure helpers)
+  modules.js          module-graph smoke test (editor)
+  gift.js             recipient-page suite (own process)
 assets/               demo recording + source icon
 docs/                 progress log
 ```
@@ -166,6 +203,14 @@ The app is a single `Garden` class built from **mixins**. `garden.js` defines th
 constructor; every other `src/*.js` module attaches methods to
 `Garden.prototype`. `src/app.js` is the one place that imports them all and
 touches the DOM to start things up.
+
+The recipient page takes the same engine down a lighter path: `share-page.js`
+imports only the layout, growth, drawing, butterfly and frame modules, then
+builds an instance from `Object.create(Garden.prototype)` — no canvases, panels,
+dialogs or input bindings — and drives it with the same `frame()` loop. That is
+why `src/ui.js` and `src/export.js` never load for a recipient, and why
+`test/gift.js` runs in its own process: it fails if the gift page ever starts
+depending on editor-only code.
 
 The modules in `math.js`, `encoders.js`, `state.js` and `palettes.js` are
 **DOM-free and side-effect-free**, which is what makes them directly
@@ -182,7 +227,9 @@ are simply unavailable in the export dialog.
 
 Everything runs locally in your browser. There is no backend, no analytics, and
 no account — your gardens are saved to `localStorage` and shared through the URL
-fragment, never uploaded anywhere.
+fragment, never uploaded anywhere. A gift link carries the names and message you
+type inside that fragment, which means anyone holding the link can read them; it
+is encoded, not encrypted, so share it only with the person it is for.
 
 ## License
 

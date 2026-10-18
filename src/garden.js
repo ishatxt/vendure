@@ -1,6 +1,7 @@
 import { h, spr, eo, eb, rng, bez, at } from './math.js';
 import { defaultState, hashToState, loadSaved } from './state.js';
 import { FONT, SENT } from './constants.js';
+import { pal } from './palettes.js';
 
 /* pure helpers are imported and attached to the prototype so existing
    `this.h(...)` style calls keep working. */
@@ -11,6 +12,12 @@ Garden.prototype.eb = eb;
 Garden.prototype.rng = rng;
 Garden.prototype.bez = bez;
 Garden.prototype.at = at;
+
+/* palette colours: shared by the editor canvas and the recipient gift page,
+   both of which render through frame.js/draw.js */
+Garden.prototype.pal = function () {
+  return pal(this.palette);
+};
 
 export function Garden() {
   this.cv = document.getElementById('cv');

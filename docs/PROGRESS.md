@@ -1,6 +1,6 @@
 # What was done — Vendure
 
-Status: **Phases 0–3, 5, 7 complete and verified.**
+Status: **Phases 0–3, 5, 7 complete and verified; recipient gift page added 2026-10-18.**
 
 > **Restructure note (2026-10-17):** the inline `<style>` and module script
 > were extracted from `index.html` into `src/style.css` and `src/app.js`;
@@ -275,6 +275,36 @@ to drag letters around or delete them.
   stale-while-revalidate for same-origin assets, plus a cache-first strategy for
   Google Fonts so the typeface survives offline. Registration is skipped on
   `file://`.
+
+## Gift sharing — recipient page (`share.html`) (2026-10-18)
+
+The **Share** button now opens a dialog that builds a *gift link*: a
+`share.html#…` URL carrying **From** / **To** names and a message (≤ 40 chars)
+alongside the usual garden state. Opening it shows a recipient-only page — dark,
+typographic, no editor UI — that mounts the real garden engine through
+`Object.create(Garden.prototype)` + `mountArtwork()` and renders the message as a
+living garden the recipient can tap. The plain-permalink flow is untouched and
+still reachable from the same dialog.
+
+- `src/state.js` — `SHARE_VERSION`, `SHARE_NAME_MAX`, `SHARE_TEXT_MAX`,
+  `cleanText`, `artText`, `shareToHash`, `parseShare` (failure reasons:
+  `empty | legacy | version | corrupt`), `pageURL`.
+- `src/share.js` — dialog controller: create / copy / preview link, native
+  share when available, visible success & error feedback, sender name remembered
+  in `localStorage`, Escape / backdrop / Enter behaviour.
+- `src/share-page.js` — recipient page: parse the link, theme from the palette,
+  mount the artwork, greet, staggered letter reveal, butterfly, error cards.
+- `share.html`, `src/share.css` — the page and its standalone styles;
+  responsive, `prefers-reduced-motion` aware, `noindex`.
+- `src/garden.js` — `Garden.prototype.pal` moved here from `ui.js`, since the
+  editor canvas and the recipient page both render through it.
+- `test/gift.js` — new suite: boots the recipient module graph in its own
+  process (`ui.js` / `export.js` deliberately absent) and renders a real gift
+  link. `npm test` now runs `run.js`, `modules.js`, `gift.js` — 95 assertions.
+- `sw.js` — cache bumped to `vendure-v6`; the shell now includes the gift page
+  and its assets, and the navigation fallback prefers the requested page.
+- `README.md` — "Sharing a garden" section plus the URL-privacy limitation:
+  gift links are encoded, **not encrypted**, and readable by anyone who has one.
 
 ## Next steps
 

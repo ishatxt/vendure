@@ -1,14 +1,18 @@
 /* Vendure service worker — offline app shell + runtime font cache */
-const VERSION = 'vendure-v5';
+const VERSION = 'vendure-v6';
 const SHELL = [
   './',
   './index.html',
+  './share.html',
   './manifest.json',
   './src/style.css',
+  './src/share.css',
   './src/app.js',
   './src/constants.js',
   './src/garden.js',
   './src/ui.js',
+  './src/share.js',
+  './src/share-page.js',
   './src/garden-state.js',
   './src/poster.js',
   './src/export.js',
@@ -47,16 +51,18 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  /* navigations: network-first so a deploy shows up, offline falls back to shell */
+  /* navigations: network-first so a deploy shows up, offline falls back to the
+     page that was asked for (share.html is not index.html) */
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(VERSION).then((c) => c.put('./index.html', copy));
+          caches.open(VERSION).then((c) => c.put(req, copy));
           return res;
         })
-        .catch(() => caches.match('./index.html'))
+        .catch(() => caches.match(req, { ignoreSearch: true })
+          .then((hit) => hit || caches.match('./index.html')))
     );
     return;
   }

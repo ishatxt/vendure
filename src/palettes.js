@@ -14,3 +14,10 @@ export var PAL = [
   ['Cyanotype', '#0A2540', '#45d6bb', '#4AA3C7', '#BFE3F0', '#FFFFFF'],
   ['Lilac dusk', '#1B1230', '#FF7BB0', '#8E7CFF', '#FFD9F0', '#F6F0FF']
 ];
+
+/* palette index -> render colours. Shared by the editor canvas and the
+   recipient gift page. */
+export function pal(i) {
+  var p = PAL[i] || PAL[0];
+  return { bg: p[1], C: { red: p[2], blue: p[3], line: p[4], text: p[5], vein: p[1] } };
+}

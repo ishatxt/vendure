@@ -28,7 +28,7 @@ Garden.prototype.buildUI = function () {
   document.getElementById('savePNG').addEventListener('click', function (e) { e.stopPropagation(); self.savePNG(); });
   document.getElementById('saveSVG').addEventListener('click', function (e) { e.stopPropagation(); self.saveSVG(); });
   var shg = document.getElementById('shareGarden');
-  if (shg) shg.addEventListener('click', function (e) { e.stopPropagation(); self.shareLink(); });
+  if (shg) shg.addEventListener('click', function (e) { e.stopPropagation(); self.openShare(); });
   this.buildPosterUI();
   this.applyPalette();
 };
@@ -152,7 +152,8 @@ Garden.prototype.buildExportUI = function () {
 Garden.prototype.buildShareUI = function () {
   var self = this;
   function on(id, fn) { var el = document.getElementById(id); if (el) el.addEventListener('click', function (e) { e.stopPropagation(); fn(); }); }
-  on('pshare', function () { self.shareLink(); });
+  this.bindShareDialog();
+  on('pshare', function () { self.openShare(); });
   on('paspect', function () { self.toggleAspect(); });
   on('pcopypng', function () { self.copyPNG(); });
   on('pcopysvg', function () { self.copyPosterSVG(); });
@@ -178,8 +179,4 @@ Garden.prototype.applyPalette = function () {
 };
 Garden.prototype.refocus = function () {
   if (this.mode === 'type' && this.ptype === 'mouse' && this.inp) { try { this.inp.focus({ preventScroll: true }); } catch (e) {} }
-};
-Garden.prototype.pal = function () {
-  var p = PAL[this.palette] || PAL[0];
-  return { bg: p[1], C: { red: p[2], blue: p[3], line: p[4], text: p[5], vein: p[1] } };
 };

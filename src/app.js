@@ -1,6 +1,7 @@
 import { Garden } from './garden.js';
 import './ui.js';
 import './garden-state.js';
+import './share.js';
 import './poster.js';
 import './export.js';
 import './input.js';

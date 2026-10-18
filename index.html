@@ -135,6 +135,60 @@
     </div>
   </div>
 
+  <div id="shmodal" hidden>
+    <div class="backdrop" id="shbackdrop"></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shtitle">
+      <div class="sheethead">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="ptitle" id="shtitle">Share a garden</div>
+          <div class="psub">Send it as a gift. Names, words and artwork all travel inside the link.</div>
+        </div>
+        <button id="shclose" class="pill ghost" type="button" style="align-self:auto">Close</button>
+      </div>
+
+      <form id="shform" novalidate>
+        <div class="shrow">
+          <div class="field">
+            <label for="shfrom">From</label>
+            <input id="shfrom" type="text" maxlength="32" autocomplete="name" spellcheck="false" placeholder="Your name">
+          </div>
+          <div class="field">
+            <label for="shto">To</label>
+            <input id="shto" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Their name">
+          </div>
+        </div>
+        <div class="field">
+          <label for="shmsg">Message</label>
+          <input id="shmsg" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="a word or a little message">
+          <div class="shnotes">
+            <span id="shcount">0 / 40</span>
+            <span id="shhint" hidden>Some characters (emoji, accents) are not drawn as garden letters.</span>
+          </div>
+        </div>
+        <button id="shcreate" class="pill solid" type="submit">Create share link</button>
+      </form>
+
+      <div id="shresult" hidden>
+        <div class="field">
+          <label for="shlink">Gift link</label>
+          <input id="shlink" type="text" readonly spellcheck="false">
+        </div>
+        <div class="shactions">
+          <button id="shcopy" class="pill solid" type="button">Copy link</button>
+          <button id="shnative" class="pill" type="button" hidden>Share&hellip;</button>
+          <button id="shopen" class="pill" type="button">Open preview</button>
+        </div>
+      </div>
+
+      <div class="pf" id="shstatus" role="status" aria-live="polite"></div>
+
+      <div class="shplain">
+        <button id="shplainbtn" class="shlink" type="button">Copy the plain garden link instead</button>
+        <span class="hint">Opens the normal Vendure editor for whoever receives it &mdash; no gift page, but smaller links.</span>
+      </div>
+    </div>
+  </div>
+
   <div id="bar">
     <div id="hints">
       <span class="fine">type to grow</span><span class="coarse">tap to type</span>

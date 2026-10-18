@@ -8,7 +8,7 @@ a:hover { color: #FFB4A8; }
   -webkit-user-select: none; user-select: none;
 }
 #app button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; font-family: inherit; cursor: pointer; }
-#app :focus-visible, #pexp :focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
+#app :focus-visible, #pexp :focus-visible, #shmodal :focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
 #app :focus:not(:focus-visible) { outline: none; }
 #app.emode, #app.emode #cv { cursor: grab; }
 #app.emode.dragging, #app.emode.dragging #cv { cursor: grabbing; }
@@ -155,21 +155,22 @@ html[data-touch] #app { touch-action: none; }
     padding: 20px 16px calc(32px + env(safe-area-inset-bottom));
   }
 }
-/* ---- export modal ---- */
-#pexp {
+/* ---- export modal + share dialog ---- */
+#pexp, #shmodal {
   position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
   padding: 16px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
 }
-#pexp[hidden] { display: none !important; }
-#pexp .backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.66); }
-#pexp .sheet {
+#pexp[hidden], #shmodal[hidden] { display: none !important; }
+#pexp .backdrop, #shmodal .backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.66); }
+#pexp .sheet, #shmodal .sheet {
   position: relative; width: min(600px, 100%); max-height: calc(100vh - 32px); overflow-y: auto;
   background: #0A0A0A; border: 1px solid #2A2A2A; border-radius: 18px;
   padding: 20px; display: flex; flex-direction: column; gap: 18px;
   box-shadow: 0 24px 80px rgba(0,0,0,0.6);
 }
-#pexp .sheethead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-#pexp .sheethead .ptitle { font-size: 22px; }
+#pexp .sheethead, #shmodal .sheethead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+#pexp .sheethead .ptitle, #shmodal .sheethead .ptitle { font-size: 22px; }
+#shmodal .sheet { touch-action: pan-y; }
 #pexp .tabs {
   display: flex; gap: 4px; padding: 4px; border: 1px solid #2A2A2A; border-radius: 999px; background: #000;
 }
@@ -189,10 +190,10 @@ html[data-touch] #app { touch-action: none; }
 #pexp .fmt:disabled { opacity: 0.4; cursor: not-allowed; }
 #pexp .fmt:disabled .fsub { color: #C0392B; }
 #pexp .settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-#pexp .settings .field { min-width: 0; }
+#pexp .settings .field, #shmodal .field { min-width: 0; }
 #pexp .prow { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; color: #8C8C8C; font-size: 11px; }
-#pexp .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-#pexp .field label { color: #8C8C8C; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; }
+#pexp .field, #shmodal .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+#pexp .field label, #shmodal .field label { color: #8C8C8C; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; }
 #pexp select {
   background: #000; color: #FFFFFF; border: 1px solid #2A2A2A; border-radius: 9px;
   padding: 9px 8px; font: inherit; font-size: 12px; width: 100%; cursor: pointer;
@@ -204,11 +205,51 @@ html[data-touch] #app { touch-action: none; }
 #pexp .progbar { height: 6px; background: #1E1E1E; border-radius: 999px; overflow: hidden; }
 #pexp .progbar i { display: block; height: 100%; width: 0; background: #FFFFFF; border-radius: 999px; transition: width 0.12s linear; }
 #pexp .progtext { color: #BDBDBD; font-size: 11px; letter-spacing: 0.03em; }
-#pexp .pf { min-height: 16px; }
-#pexp .hint { color: #6E6E6E; font-size: 11px; line-height: 1.5; }
+#pexp .pf, #shmodal .pf { min-height: 16px; }
+#pexp .hint, #shmodal .hint { color: #6E6E6E; font-size: 11px; line-height: 1.5; }
 @media (max-width: 520px) {
-  #pexp { align-items: flex-end; padding: 0; }
-  #pexp .sheet { width: 100%; max-height: 92vh; border-radius: 18px 18px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  #pexp, #shmodal { align-items: flex-end; padding: 0; }
+  #pexp .sheet, #shmodal .sheet { width: 100%; max-height: 92vh; border-radius: 18px 18px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
   #pexp .formats { grid-template-columns: 1fr; }
   #pexp .settings { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---- share dialog ---- */
+#shmodal form { display: flex; flex-direction: column; gap: 14px; }
+#shmodal .shrow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#shmodal .shnotes { display: flex; justify-content: space-between; gap: 10px; color: #8C8C8C; font-size: 11px; }
+#shmodal .shnotes span { min-width: 0; }
+#shmodal .shnotes #shhint { text-align: right; color: #6E6E6E; }
+#shmodal input[type=text] {
+  background: #000; color: #FFFFFF; border: 1px solid #2A2A2A; border-radius: 9px;
+  padding: 10px 11px; font: inherit; font-size: 13px; width: 100%; cursor: text;
+  -webkit-user-select: text; user-select: text;
+}
+#shmodal input[type=text]::placeholder { color: #6E6E6E; }
+#shmodal input[type=text]:focus { border-color: #FFFFFF; }
+#shmodal #shmsg { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 20px; }
+#shmodal #shlink { color: #BDBDBD; font-size: 11px; }
+#shmodal #shresult { display: flex; flex-direction: column; gap: 12px; }
+#shmodal #shresult[hidden] { display: none !important; }
+#shmodal .shactions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#shmodal .shactions #shcopy { grid-column: 1 / -1; }
+/* with no native share sheet, let the preview button take the whole row */
+#shmodal .shactions #shnative[hidden] + #shopen { grid-column: 1 / -1; }
+#shmodal .shplain { display: flex; flex-direction: column; gap: 5px; border-top: 1px solid #1E1E1E; padding-top: 14px; }
+#shmodal .shlink {
+  align-self: flex-start; background: transparent; border: 0; padding: 0; cursor: pointer;
+  color: #BDBDBD; font: inherit; font-size: 12px; text-align: left;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+#shmodal .shlink:hover { color: #FFFFFF; }
+#shmodal .pf.ok { color: #7FD18B; }
+#shmodal .pf.err { color: #FF8A7A; }
+@media (max-width: 380px) {
+  #shmodal .shrow, #shmodal .shactions { grid-template-columns: 1fr; }
+}
+/* short desktop windows: keep the whole dialog on screen without scrolling */
+@media (max-height: 700px) {
+  #shmodal .sheet { gap: 12px; padding: 16px; }
+  #shmodal #shmsg { font-size: 17px; }
+  #shmodal .shplain { padding-top: 10px; }
 }

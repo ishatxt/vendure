@@ -12,6 +12,7 @@ function ok(name, cond) {
   if (cond) { pass++; console.log('  ok   ' + name); }
   else { fail++; console.log('  FAIL ' + name); }
 }
+function eq(name, a, b) { ok(name + ' (' + JSON.stringify(a) + ')', JSON.stringify(a) === JSON.stringify(b)); }
 
 function def(name, val) {
   try { Object.defineProperty(globalThis, name, { value: val, configurable: true, writable: true }); }
@@ -73,11 +74,12 @@ def('URL', { createObjectURL: function () { return ''; }, revokeObjectURL: funct
 
 var errors = [];
 var base = new RealURL('../src/', import.meta.url).href;
-var modules = ['garden.js', 'ui.js', 'garden-state.js', 'poster.js', 'export.js', 'input.js', 'draw.js', 'layout.js', 'growth.js', 'butterflies.js', 'frame.js'];
+var modules = ['garden.js', 'ui.js', 'garden-state.js', 'share.js', 'poster.js', 'export.js', 'input.js', 'draw.js', 'layout.js', 'growth.js', 'butterflies.js', 'frame.js', 'share-page.js'];
 
 try {
   for (var i = 0; i < modules.length; i++) await import(base + modules[i]);
   var Garden = (await import(base + 'garden.js')).Garden;
+  var st = await import(base + 'state.js');
   var g = new Garden();
 
   for (var ci = 0; ci < 'hello world'.length; ci++) g.add('hello world'[ci], performance.now());
@@ -97,6 +99,33 @@ try {
   g.render(B, performance.now(), g.mainState());
   g.posterSVG(0, 1);
   ok('poster build, still render, and SVG export', true);
+
+  /* --- gift sharing --- */
+  eq('shareMessage reads the garden', g.shareMessage(), 'hello world');
+  var gift = g.giftLink('Sam', 'Alex', 'hello world');
+  ok('gift link points at share.html', gift.indexOf('http://x/share.html#') === 0);
+  var payload = st.parseShare(gift.slice(gift.indexOf('#')));
+  ok('gift link carries the gift', payload.ok && payload.from === 'Sam' && payload.to === 'Alex' && payload.message === 'hello world');
+  ok('plain link still opens the editor', g.plainLink().indexOf('http://x/#') === 0 && g.plainLink().indexOf('share.html') === -1);
+
+  /* the recipient page can rebuild the artwork with the shared state */
+  var page = await import(base + 'share-page.js');
+  var art = page.mountArtwork(document.getElementById('cv'), payload.state, payload.message);
+  for (var fw = 0; fw < 6; fw++) art.frame();
+  var live = art.letters.filter(function (l) { return !l.dead; });
+  eq('gift artwork spells the message', live.map(function (l) { return l.ch; }).join(''), 'hello world');
+  art.spawnFly(200, 200);
+  art.frame();
+  ok('gift artwork animates', true);
+
+  /* the dialog itself (against the DOM stub) */
+  g.openShare();
+  ok('share dialog opens with the message prefilled', document.getElementById('shmsg').value === 'hello world');
+  var made = g.createShareLink();
+  ok('dialog creates a gift link', made.indexOf('share.html#') > -1 && document.getElementById('shresult').hidden === false);
+  ok('dialog reuses the memoised link', g._shURL === made);
+  g.closeShare();
+  ok('share dialog closes', document.getElementById('shmodal').hidden === true && g._shURL === '');
 } catch (e) {
   errors.push(e.stack || String(e));
 }
